@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: certmonitorcloud
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:cert_monitor}
+    username: ${DB_USER:cert_admin}
+    password: ${DB_PASSWORD:change_me_to_a_strong_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate          # Schema managed by schema.sql — JPA only validates
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        default_schema: public
+
+server:
+  port: ${APP_PORT:8080}
+
+logging:
+  level:
+    com.codecatalyst: INFO
+    org.hibernate.SQL: WARN
