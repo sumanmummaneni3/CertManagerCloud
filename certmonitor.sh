@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# certmonitor.sh - Docker management script for CertMonitor
-# Usage: ./certmonitor.sh {start|stop|restart|status|logs|build|clean|help}
+# certmonitor.sh - CertMonitor full setup and Docker management script
+# Usage: ./certmonitor.sh {setup|start|stop|restart|status|logs|build|clean|help}
 #
-# Supports automatic Docker installation on:
-#   - Ubuntu / Debian
-#   - RHEL / CentOS / Fedora / Amazon Linux
-#   - macOS (via Homebrew)
-#   - Windows users are guided to the installer
+# Designed to run on a BARE Ubuntu VM with nothing pre-installed.
+# The 'setup' command (also auto-runs inside 'start') will install:
+#   - curl, unzip, git, netcat (basic tools)
+#   - Docker Engine + Compose plugin
 # =============================================================================
 
 set -euo pipefail
@@ -37,16 +36,22 @@ success() { echo -e "${GREEN}[OK]${RESET}    $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${RESET}  $*"; }
 error()   { echo -e "${RED}[ERROR]${RESET} $*" >&2; }
 header()  { echo -e "\n${BOLD}${CYAN}$*${RESET}"; echo -e "${CYAN}--------------------------------------------------${RESET}"; }
+step()    { echo -e "\n${BOLD}  ▶ $*${RESET}"; }
 
-step() {
-    echo -e "\n${BOLD}  ▶ $*${RESET}"
+# ── Privilege helper ──────────────────────────────────────────────────────────
+# Use sudo only if we are not already root
+maybe_sudo() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
 }
 
-# ── OS Detection ──────────────────────────────────────────────────────────────
+# ── OS / Distro detection ─────────────────────────────────────────────────────
 detect_os() {
     OS="unknown"
     DISTRO="unknown"
-
     case "$(uname -s)" in
         Linux)
             OS="linux"
@@ -56,265 +61,293 @@ detect_os() {
                 DISTRO="${ID:-unknown}"
             fi
             ;;
-        Darwin)
-            OS="macos"
-            ;;
-        MINGW*|MSYS*|CYGWIN*|Windows_NT)
-            OS="windows"
-            ;;
+        Darwin)  OS="macos" ;;
+        MINGW*|MSYS*|CYGWIN*|Windows_NT) OS="windows" ;;
     esac
 }
 
-# ── Docker Installation ───────────────────────────────────────────────────────
+# =============================================================================
+# SECTION 1 — Prerequisites (bare-VM safe)
+# =============================================================================
 
-install_docker_ubuntu_debian() {
-    step "Installing Docker on Ubuntu/Debian..."
+install_base_tools_ubuntu() {
+    step "Installing base tools (curl, unzip, git, netcat, ca-certificates)..."
+    maybe_sudo apt-get update -qq
+    maybe_sudo apt-get install -y -qq \
+        curl \
+        unzip \
+        git \
+        netcat-openbsd \
+        ca-certificates \
+        gnupg \
+        lsb-release \
+        apt-transport-https \
+        software-properties-common
+    success "Base tools installed."
+}
 
-    if ! command -v curl &>/dev/null; then
-        info "Installing curl..."
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq curl
-    fi
+install_docker_ubuntu() {
+    step "Installing Docker Engine + Compose plugin..."
 
-    info "Adding Docker's official GPG key and repository..."
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq ca-certificates gnupg lsb-release
+    # Remove any old/unofficial docker packages
+    maybe_sudo apt-get remove -y -qq \
+        docker docker-engine docker.io containerd runc 2>/dev/null || true
 
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/${DISTRO}/gpg \
-        | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    # Add Docker's official GPG key
+    maybe_sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL "https://download.docker.com/linux/${DISTRO}/gpg" \
+        | maybe_sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    maybe_sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
+    # Add Docker apt repository
     echo \
         "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
         https://download.docker.com/linux/${DISTRO} \
         $(lsb_release -cs) stable" \
-        | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        | maybe_sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-    info "Installing Docker Engine and Compose plugin..."
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    maybe_sudo apt-get update -qq
+    maybe_sudo apt-get install -y -qq \
+        docker-ce \
+        docker-ce-cli \
+        containerd.io \
+        docker-buildx-plugin \
+        docker-compose-plugin
 
-    info "Adding current user to the docker group (avoid needing sudo)..."
-    sudo usermod -aG docker "$USER"
-
-    sudo systemctl enable docker
-    sudo systemctl start docker
-
-    success "Docker installed successfully."
-    warn "NOTE: Log out and back in (or run 'newgrp docker') for group membership to take effect."
+    success "Docker Engine and Compose plugin installed."
 }
 
-install_docker_rhel_centos() {
-    step "Installing Docker on RHEL/CentOS/Fedora/Amazon Linux..."
+configure_docker_group() {
+    step "Configuring Docker group permissions..."
 
-    local pkg_mgr
-    if command -v dnf &>/dev/null; then
-        pkg_mgr="dnf"
+    # Add user to docker group so sudo isn't needed for docker commands
+    if ! groups "$USER" | grep -q docker; then
+        maybe_sudo usermod -aG docker "$USER"
+        info "Added '$USER' to the docker group."
     else
-        pkg_mgr="yum"
+        info "User '$USER' is already in the docker group."
     fi
 
-    info "Adding Docker repository..."
-    sudo "$pkg_mgr" install -y -q yum-utils
-    sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    # Enable + start Docker daemon
+    maybe_sudo systemctl enable docker --quiet
+    maybe_sudo systemctl start docker
 
-    info "Installing Docker Engine and Compose plugin..."
-    sudo "$pkg_mgr" install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-    info "Adding current user to the docker group..."
-    sudo usermod -aG docker "$USER"
-
-    sudo systemctl enable docker
-    sudo systemctl start docker
-
-    success "Docker installed successfully."
-    warn "NOTE: Log out and back in (or run 'newgrp docker') for group membership to take effect."
+    success "Docker daemon started and enabled on boot."
 }
 
-install_docker_macos() {
-    step "Installing Docker on macOS..."
-
-    if ! command -v brew &>/dev/null; then
-        info "Homebrew not found. Installing Homebrew first..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    fi
-
-    info "Installing Docker Desktop via Homebrew..."
-    brew install --cask docker
-
-    info "Launching Docker Desktop..."
-    open -a Docker
-
-    success "Docker Desktop installed."
-    warn "NOTE: Wait for Docker Desktop to fully start (whale icon in menu bar) before running this script again."
-}
-
-install_docker_windows() {
-    header "Docker Installation — Windows"
-    echo -e "
-  Automatic installation is not supported on Windows from a shell script.
-  Please follow these steps:
-
-  ${BOLD}Option 1 — Docker Desktop (recommended):${RESET}
-    1. Download from: ${CYAN}https://www.docker.com/products/docker-desktop/${RESET}
-    2. Run the installer and follow the prompts
-    3. Restart your computer when asked
-    4. After Docker Desktop starts, re-run this script in Git Bash or WSL2
-
-  ${BOLD}Option 2 — WSL2 + Docker (advanced):${RESET}
-    1. Enable WSL2:  ${CYAN}wsl --install${RESET}
-    2. Install Ubuntu from the Microsoft Store
-    3. Inside Ubuntu, re-run this script — it will auto-install Docker for you
-
-  ${BOLD}Verify installation:${RESET}
-    docker --version
-    docker compose version
-"
-    exit 0
-}
-
-install_docker() {
-    header "Docker Not Found — Installing"
-    detect_os
-
-    echo -e "  Detected OS: ${BOLD}${OS}${RESET} / Distro: ${BOLD}${DISTRO}${RESET}\n"
-
-    read -rp "  Docker is required. Install it now? [Y/n]: " confirm
-    if [[ "$confirm" =~ ^[Nn]$ ]]; then
-        error "Docker is required to run CertMonitor. Aborting."
+ensure_docker_accessible() {
+    # After adding the user to the docker group, the current shell session
+    # won't have the new group yet. We detect this and run docker via
+    # 'sg docker' (switch group) for the rest of this script session.
+    if docker info &>/dev/null 2>&1; then
+        # Already accessible — nothing to do
+        DOCKER_CMD="docker"
+    elif sg docker -c "docker info" &>/dev/null 2>&1; then
+        # Accessible via sg (group applied without re-login)
+        DOCKER_CMD="sg docker -c docker"
+        warn "Using 'sg docker' for this session. Log out and back in to make this permanent."
+    elif sudo docker info &>/dev/null 2>&1; then
+        # Fall back to sudo
+        DOCKER_CMD="sudo docker"
+        warn "Running Docker with sudo for this session."
+    else
+        error "Docker is installed but cannot be reached. Try logging out and back in."
         exit 1
     fi
+    export DOCKER_CMD
+}
+
+install_prerequisites_ubuntu() {
+    install_base_tools_ubuntu
+    install_docker_ubuntu
+    configure_docker_group
+    ensure_docker_accessible
+}
+
+install_prerequisites_rhel() {
+    step "Installing base tools..."
+    local pm="yum"
+    command -v dnf &>/dev/null && pm="dnf"
+
+    maybe_sudo "$pm" install -y -q \
+        curl unzip git nmap-ncat ca-certificates
+
+    step "Installing Docker Engine + Compose plugin..."
+    maybe_sudo "$pm" install -y -q yum-utils
+    maybe_sudo yum-config-manager \
+        --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    maybe_sudo "$pm" install -y \
+        docker-ce docker-ce-cli containerd.io \
+        docker-buildx-plugin docker-compose-plugin
+
+    maybe_sudo usermod -aG docker "$USER"
+    maybe_sudo systemctl enable docker --quiet
+    maybe_sudo systemctl start docker
+    ensure_docker_accessible
+}
+
+install_prerequisites_macos() {
+    step "Installing prerequisites on macOS..."
+    if ! command -v brew &>/dev/null; then
+        info "Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+    brew install curl git netcat
+    brew install --cask docker
+    open -a Docker
+    warn "Waiting for Docker Desktop to start (up to 60s)..."
+    local i=0
+    until docker info &>/dev/null || [ $i -ge 30 ]; do
+        sleep 2; i=$((i+1)); echo -ne "\r  Waiting ${i}/30..."
+    done
+    echo ""
+    docker info &>/dev/null || { error "Docker Desktop didn't start. Launch it manually then retry."; exit 1; }
+    DOCKER_CMD="docker"
+    export DOCKER_CMD
+    success "Docker Desktop is running."
+}
+
+cmd_setup() {
+    header "CertMonitor — Environment Setup"
+    detect_os
+
+    info "Detected OS: ${BOLD}${OS}${RESET} / Distro: ${BOLD}${DISTRO}${RESET}"
+
+    # ── Already fully set up? ──────────────────────────────────────────────────
+    local needs_install=false
+    command -v curl    &>/dev/null || needs_install=true
+    command -v git     &>/dev/null || needs_install=true
+    command -v docker  &>/dev/null || needs_install=true
+
+    if [ "$needs_install" = false ] && docker info &>/dev/null; then
+        success "All prerequisites already installed."
+        DOCKER_CMD="docker"
+        export DOCKER_CMD
+        return
+    fi
+
+    # ── Confirm before installing ──────────────────────────────────────────────
+    echo ""
+    warn "The following will be installed if missing:"
+    echo "    curl, unzip, git, netcat, Docker Engine, Docker Compose plugin"
+    echo ""
+    read -rp "  Proceed with installation? [Y/n]: " confirm
+    [[ "$confirm" =~ ^[Nn]$ ]] && { error "Aborted."; exit 1; }
 
     case "$OS" in
         linux)
             case "$DISTRO" in
                 ubuntu|debian|raspbian|linuxmint|pop)
-                    install_docker_ubuntu_debian
-                    ;;
+                    install_prerequisites_ubuntu ;;
                 rhel|centos|fedora|amzn|rocky|almalinux)
-                    install_docker_rhel_centos
-                    ;;
+                    install_prerequisites_rhel ;;
                 *)
-                    warn "Unrecognised Linux distro '${DISTRO}'. Trying the official Docker convenience script..."
-                    curl -fsSL https://get.docker.com | sudo sh
-                    sudo usermod -aG docker "$USER"
-                    sudo systemctl enable docker
-                    sudo systemctl start docker
-                    success "Docker installed via convenience script."
-                    warn "NOTE: Log out and back in for group membership to take effect."
-                    ;;
+                    warn "Unrecognised distro '${DISTRO}' — trying Ubuntu path..."
+                    DISTRO="ubuntu"
+                    install_prerequisites_ubuntu ;;
             esac
             ;;
         macos)
-            install_docker_macos
-            ;;
+            install_prerequisites_macos ;;
         windows)
-            install_docker_windows
-            ;;
+            header "Windows — Manual Setup Required"
+            echo -e "
+  ${BOLD}Option 1 — Docker Desktop:${RESET}
+    Download: ${CYAN}https://www.docker.com/products/docker-desktop/${RESET}
+
+  ${BOLD}Option 2 — WSL2 + Ubuntu:${RESET}
+    Run in PowerShell:  wsl --install
+    Then re-run this script inside the Ubuntu terminal.
+"
+            exit 0 ;;
         *)
-            error "Unsupported OS. Please install Docker manually: https://docs.docker.com/get-docker/"
-            exit 1
-            ;;
+            error "Unsupported OS. Install Docker manually: https://docs.docker.com/get-docker/"
+            exit 1 ;;
     esac
+
+    echo ""
+    success "Setup complete!"
+    step "Verifying installation..."
+    docker_version=$(${DOCKER_CMD} --version 2>/dev/null || echo "unknown")
+    compose_version=${DOCKER_CMD} compose version 2>/dev/null || echo "unknown"
+    success "  $docker_version"
+
+    # ── Bootstrap .env ─────────────────────────────────────────────────────────
+    if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+        cp .env.example .env
+        warn ".env created from .env.example — review and update credentials before starting."
+    fi
 }
 
-# ── Check & ensure Docker is running ─────────────────────────────────────────
-ensure_docker_running() {
-    # Check if the Docker daemon is actually responding (not just installed)
+# =============================================================================
+# SECTION 2 — Runtime checks (called before every command)
+# =============================================================================
+
+check_dependencies() {
+    detect_os
+
+    # 1. Install everything if Docker is missing
+    if ! command -v docker &>/dev/null; then
+        cmd_setup
+    fi
+
+    # 2. Ensure daemon is running
     if ! docker info &>/dev/null; then
-        warn "Docker is installed but not running."
-        detect_os
+        warn "Docker daemon not running. Attempting to start..."
         case "$OS" in
             linux)
-                info "Starting Docker daemon..."
-                sudo systemctl start docker
+                maybe_sudo systemctl start docker
                 sleep 3
-                if ! docker info &>/dev/null; then
-                    error "Failed to start Docker. Try: sudo systemctl start docker"
-                    exit 1
-                fi
-                success "Docker daemon started."
-                ;;
+                docker info &>/dev/null || { error "Failed to start Docker daemon."; exit 1; }
+                success "Docker daemon started." ;;
             macos)
-                info "Starting Docker Desktop..."
                 open -a Docker
-                info "Waiting for Docker Desktop to be ready (this can take up to 60 seconds)..."
-                local count=0
-                until docker info &>/dev/null || [ $count -ge 30 ]; do
-                    sleep 2
-                    count=$((count + 1))
-                    echo -ne "\r  Waiting... ${count}/30"
+                local i=0
+                until docker info &>/dev/null || [ $i -ge 30 ]; do
+                    sleep 2; i=$((i+1)); echo -ne "\r  Waiting ${i}/30..."
                 done
                 echo ""
-                if ! docker info &>/dev/null; then
-                    error "Docker Desktop did not start in time. Please start it manually and retry."
-                    exit 1
-                fi
-                success "Docker Desktop is running."
-                ;;
+                docker info &>/dev/null || { error "Docker Desktop didn't start. Launch it manually."; exit 1; }
+                success "Docker Desktop is running." ;;
             *)
-                error "Docker is not running. Please start Docker and retry."
-                exit 1
-                ;;
+                error "Docker is not running. Please start it manually."
+                exit 1 ;;
         esac
     fi
-}
 
-# ── Pull PostgreSQL image if not present ─────────────────────────────────────
-ensure_postgres_image() {
-    if ! docker image inspect "$POSTGRES_IMAGE" &>/dev/null; then
-        info "PostgreSQL image '${POSTGRES_IMAGE}' not found locally — pulling from Docker Hub..."
-        docker pull "$POSTGRES_IMAGE"
-        success "PostgreSQL image downloaded."
-    else
-        info "PostgreSQL image '${POSTGRES_IMAGE}' already present locally."
-    fi
-}
+    # 3. Make sure docker is accessible (handle group membership)
+    ensure_docker_accessible 2>/dev/null || true
+    DOCKER_CMD="${DOCKER_CMD:-docker}"
 
-# ── Preflight checks ──────────────────────────────────────────────────────────
-check_dependencies() {
-    # 1. Install Docker if missing
-    if ! command -v docker &>/dev/null; then
-        install_docker
-        # After install, re-exec the script so the new PATH / group takes effect
-        if ! command -v docker &>/dev/null; then
-            error "Docker still not found after installation. Please open a new terminal and retry."
-            exit 1
-        fi
-    fi
-
-    # 2. Ensure Docker daemon is running
-    ensure_docker_running
-
-    # 3. Check Compose plugin
+    # 4. Compose plugin
     if ! docker compose version &>/dev/null; then
-        error "Docker Compose plugin not found."
-        error "If you installed Docker manually, ensure the Compose plugin is included."
-        error "See: https://docs.docker.com/compose/install/"
+        error "Docker Compose plugin not found. Re-run:  ./certmonitor.sh setup"
         exit 1
     fi
 
-    # 4. Check compose file
+    # 5. Compose file present
     if [ ! -f "$COMPOSE_FILE" ]; then
         error "docker-compose.yml not found. Run this script from the project root."
         exit 1
     fi
 
-    # 5. Bootstrap .env if missing
+    # 6. Bootstrap .env
     if [ ! -f ".env" ]; then
-        warn ".env not found. Copying from .env.example..."
         if [ -f ".env.example" ]; then
             cp .env.example .env
-            warn "Review and update .env with your actual credentials before starting."
+            warn ".env created from .env.example — update credentials before starting."
         else
-            error ".env.example not found. Cannot proceed without environment configuration."
+            error ".env file missing and no .env.example found."
             exit 1
         fi
     fi
 
-    # 6. Pull DB image if not cached
-    ensure_postgres_image
+    # 7. Pull postgres image if not cached
+    if ! docker image inspect "$POSTGRES_IMAGE" &>/dev/null; then
+        info "Pulling ${POSTGRES_IMAGE} from Docker Hub..."
+        docker pull "$POSTGRES_IMAGE"
+        success "PostgreSQL image ready."
+    fi
 }
 
 container_running() {
@@ -325,7 +358,10 @@ container_exists() {
     docker ps -a --filter "name=$1" --format "{{.Names}}" | grep -q "^$1$"
 }
 
-# ── start ─────────────────────────────────────────────────────────────────────
+# =============================================================================
+# SECTION 3 — Commands
+# =============================================================================
+
 cmd_start() {
     header "Starting CertMonitor"
     check_dependencies
@@ -340,18 +376,16 @@ cmd_start() {
     docker compose up -d --remove-orphans
 
     info "Waiting for application to be ready on port ${APP_PORT}..."
-    local retries=30
-    local count=0
+    local retries=30 count=0
     until curl -sf "http://localhost:${APP_PORT}" &>/dev/null || [ $count -ge $retries ]; do
-        sleep 2
-        count=$((count + 1))
+        sleep 2; count=$((count+1))
         echo -ne "\r  Attempt $count/$retries..."
     done
     echo ""
 
     if [ $count -ge $retries ]; then
-        warn "App did not respond within timeout — it may still be initialising."
-        warn "Check logs with:  ./certmonitor.sh logs app"
+        warn "App did not respond within timeout — may still be initialising."
+        warn "Check logs:  ./certmonitor.sh logs app"
     else
         success "Application is up at http://localhost:${APP_PORT}"
     fi
@@ -359,7 +393,6 @@ cmd_start() {
     cmd_status
 }
 
-# ── stop ──────────────────────────────────────────────────────────────────────
 cmd_stop() {
     header "Stopping CertMonitor"
     check_dependencies
@@ -371,11 +404,10 @@ cmd_stop() {
 
     info "Stopping services gracefully..."
     docker compose stop
-    success "All services stopped. Data volume is preserved."
-    info "To remove containers entirely, run:  ./certmonitor.sh clean"
+    success "All services stopped. Data volume preserved."
+    info "To remove containers:  ./certmonitor.sh clean"
 }
 
-# ── restart ───────────────────────────────────────────────────────────────────
 cmd_restart() {
     header "Restarting CertMonitor"
     check_dependencies
@@ -385,21 +417,18 @@ cmd_restart() {
     cmd_status
 }
 
-# ── status ────────────────────────────────────────────────────────────────────
 cmd_status() {
     header "CertMonitor Status"
 
-    # Docker itself might not be running — handle gracefully
     if ! command -v docker &>/dev/null || ! docker info &>/dev/null; then
-        warn "Docker is not installed or not running."
+        warn "Docker is not installed or not running. Run:  ./certmonitor.sh setup"
         return
     fi
 
-    echo -e "\n${BOLD}Docker:${RESET}"
-    docker_version=$(docker --version 2>/dev/null || echo "unknown")
-    compose_version=$(docker compose version 2>/dev/null || echo "unknown")
-    success "  $docker_version"
-    success "  $compose_version"
+    echo -e "\n${BOLD}Environment:${RESET}"
+    success "  $(docker --version)"
+    success "  $(docker compose version)"
+    success "  OS: $(uname -srm)"
 
     echo -e "\n${BOLD}Containers:${RESET}"
     printf "  %-28s %-14s %-22s %s\n" "NAME" "STATE" "HEALTH" "PORTS"
@@ -416,7 +445,6 @@ cmd_status() {
                 exited)  state_out="${RED}exited${RESET}" ;;
                 *)       state_out="${YELLOW}${state}${RESET}" ;;
             esac
-
             case "$health" in
                 healthy)   health_out="${GREEN}healthy${RESET}" ;;
                 unhealthy) health_out="${RED}unhealthy${RESET}" ;;
@@ -435,7 +463,7 @@ cmd_status() {
         size=$(docker image inspect "$POSTGRES_IMAGE" --format '{{.Size}}' | awk '{printf "%.0f MB", $1/1024/1024}')
         success "  ${POSTGRES_IMAGE}  (${size})"
     else
-        warn "  ${POSTGRES_IMAGE}  (not pulled)"
+        warn "  ${POSTGRES_IMAGE}  (not pulled yet)"
     fi
 
     echo -e "\n${BOLD}Endpoints:${RESET}"
@@ -445,42 +473,29 @@ cmd_status() {
         warn "  REST API   http://localhost:${APP_PORT}/api/v1  (not reachable)"
     fi
 
-    if nc -z localhost "$DB_PORT" &>/dev/null; then
+    if nc -z localhost "$DB_PORT" &>/dev/null 2>&1; then
         success "  PostgreSQL localhost:${DB_PORT}"
     else
         warn "  PostgreSQL localhost:${DB_PORT}  (not reachable)"
     fi
 
     echo -e "\n${BOLD}Volumes:${RESET}"
-    docker volume ls --filter "name=postgres_data" --format "  {{.Name}}  (driver: {{.Driver}})" 2>/dev/null || true
+    docker volume ls --filter "name=postgres_data" \
+        --format "  {{.Name}}  (driver: {{.Driver}})" 2>/dev/null || true
     echo ""
 }
 
-# ── logs ──────────────────────────────────────────────────────────────────────
 cmd_logs() {
     check_dependencies
     local service="${1:-}"
     case "$service" in
-        app)
-            header "App Logs"
-            docker compose logs -f --tail=100 "$APP_SERVICE"
-            ;;
-        db)
-            header "DB Logs"
-            docker compose logs -f --tail=100 "$DB_SERVICE"
-            ;;
-        "")
-            header "All Logs"
-            docker compose logs -f --tail=50
-            ;;
-        *)
-            error "Unknown service '$service'. Use:  logs [app|db]"
-            exit 1
-            ;;
+        app) header "App Logs";  docker compose logs -f --tail=100 "$APP_SERVICE" ;;
+        db)  header "DB Logs";   docker compose logs -f --tail=100 "$DB_SERVICE" ;;
+        "")  header "All Logs";  docker compose logs -f --tail=50 ;;
+        *)   error "Unknown service '$service'. Use: logs [app|db]"; exit 1 ;;
     esac
 }
 
-# ── build ─────────────────────────────────────────────────────────────────────
 cmd_build() {
     header "Building CertMonitor Images"
     check_dependencies
@@ -489,14 +504,12 @@ cmd_build() {
     success "Build complete."
 }
 
-# ── clean ─────────────────────────────────────────────────────────────────────
 cmd_clean() {
     header "Cleaning CertMonitor"
     check_dependencies
     warn "This will stop and remove all containers."
     read -rp "  Remove data volume too? This will DELETE all database data [y/N]: " confirm_volume
     echo ""
-    info "Removing containers..."
     if [[ "$confirm_volume" =~ ^[Yy]$ ]]; then
         docker compose down -v
         success "Containers and data volume removed."
@@ -506,33 +519,38 @@ cmd_clean() {
     fi
 }
 
-# ── help ──────────────────────────────────────────────────────────────────────
 cmd_help() {
     echo -e "
 ${BOLD}${CYAN}CertMonitor Docker Manager${RESET}
+${BOLD}Designed to run on a bare Ubuntu VM — installs all tools automatically.${RESET}
 
 ${BOLD}Usage:${RESET}
   ./certmonitor.sh <command> [options]
 
 ${BOLD}Commands:${RESET}
-  ${GREEN}start${RESET}            Start all services — installs Docker automatically if needed
+  ${GREEN}setup${RESET}            Install all prerequisites (curl, git, Docker, Compose)
+  ${GREEN}start${RESET}            Start all services — runs setup automatically if needed
   ${GREEN}stop${RESET}             Stop all services gracefully (data preserved)
   ${GREEN}restart${RESET}          Restart all running services
-  ${GREEN}status${RESET}           Show Docker info, container health, and endpoint availability
+  ${GREEN}status${RESET}           Show environment info, container health, endpoints
   ${GREEN}logs${RESET} [app|db]    Tail logs — omit argument to follow all services
   ${GREEN}build${RESET}            Rebuild Docker images from scratch (no cache)
   ${GREEN}clean${RESET}            Remove containers (prompts before deleting the data volume)
   ${GREEN}help${RESET}             Show this message
 
-${BOLD}Auto-install support:${RESET}
-  Ubuntu / Debian       Automatic via apt + Docker official repo
-  RHEL / CentOS / Fedora / Amazon Linux    Automatic via yum/dnf + Docker official repo
-  Other Linux           Automatic via get.docker.com convenience script
-  macOS                 Automatic via Homebrew (installs Homebrew too if needed)
-  Windows               Manual — follow the printed instructions
+${BOLD}First-time usage on a bare Ubuntu VM:${RESET}
+  1. Upload or clone the project folder to the VM
+  2. chmod +x certmonitor.sh
+  3. ./certmonitor.sh start
+     (installs curl, git, netcat, Docker, Compose automatically — requires sudo)
+
+${BOLD}What gets installed automatically:${RESET}
+  Ubuntu/Debian     curl, unzip, git, netcat-openbsd, Docker CE, Compose plugin
+  RHEL/CentOS       curl, unzip, git, nmap-ncat,      Docker CE, Compose plugin
+  macOS             Homebrew, git, netcat, Docker Desktop
 
 ${BOLD}Examples:${RESET}
-  ./certmonitor.sh start          # First run: installs Docker if needed, then starts
+  ./certmonitor.sh start
   ./certmonitor.sh logs app
   ./certmonitor.sh status
   ./certmonitor.sh stop
@@ -542,8 +560,10 @@ ${BOLD}Examples:${RESET}
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 COMMAND="${1:-help}"
+DOCKER_CMD="docker"
 
 case "$COMMAND" in
+    setup)           cmd_setup ;;
     start)           cmd_start ;;
     stop)            cmd_stop ;;
     restart)         cmd_restart ;;
@@ -555,6 +575,5 @@ case "$COMMAND" in
     *)
         error "Unknown command: '$COMMAND'"
         cmd_help
-        exit 1
-        ;;
+        exit 1 ;;
 esac
