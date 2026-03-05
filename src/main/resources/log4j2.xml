@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    CertMonitor — Log4j2 Configuration
+    =====================================================================
+    Log directory is controlled by the LOG_DIR environment variable.
+    Default: ./logs  (relative to the working directory)
+    In Docker:       /app/logs  (mounted as a named volume)
+
+    Three appenders:
+      Console       — human-readable, coloured, always on
+      AppFile       — application logs, daily rolling, 30-day retention
+      ErrorFile     — ERROR and above only, daily rolling, 90-day retention
+
+    Log levels:
+      com.codecatalyst  INFO   (our application code)
+      org.hibernate.SQL WARN   (suppress routine SQL — set to DEBUG to see queries)
+      Spring / Hikari   WARN   (framework noise suppressed)
+      Root              WARN
+-->
+<Configuration status="WARN" monitorInterval="30">
+
+    <Properties>
+        <!-- Override with LOG_DIR environment variable; falls back to ./logs -->
+        <Property name="LOG_DIR">${env:LOG_DIR:-./logs}</Property>
+        <Property name="APP_NAME">certmonitor</Property>
+
+        <!-- Console pattern — coloured, concise -->
+        <Property name="CONSOLE_PATTERN">
+            %clr{%d{HH:mm:ss.SSS}}{faint} %clr{%5p} %clr{---}{faint} %clr{[%15.15t]}{faint} %clr{%-40.40c{1.}}{cyan} %clr{:}{faint} %m%n%xwEx
+        </Property>
+
+        <!-- File pattern — full timestamp, thread, logger, no colour codes -->
+        <Property name="FILE_PATTERN">
+            %d{yyyy-MM-dd HH:mm:ss.SSS} %5p --- [%t] %-40.40c{1.} : %m%n%xwEx
+        </Property>
+    </Properties>
+
+    <Appenders>
+
+        <!-- ── Console ─────────────────────────────────────────────────────── -->
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${CONSOLE_PATTERN}" disableAnsi="false"/>
+            <!-- Only show INFO and above on console -->
+            <ThresholdFilter level="INFO" onMatch="ACCEPT" onMismatch="DENY"/>
+        </Console>
+
+        <!-- ── Application log file (INFO+) ────────────────────────────────── -->
+        <!--
+            Current file:  {LOG_DIR}/certmonitor.log
+            Rolled files:  {LOG_DIR}/archive/certmonitor-yyyy-MM-dd-{n}.log.gz
+            Retention:     30 days  OR  10 GB total — whichever is hit first
+        -->
+        <RollingFile name="AppFile"
+                     fileName="${LOG_DIR}/${APP_NAME}.log"
+                     filePattern="${LOG_DIR}/archive/${APP_NAME}-%d{yyyy-MM-dd}-%i.log.gz"
+                     immediateFlush="true">
+            <PatternLayout pattern="${FILE_PATTERN}"/>
+            <Policies>
+                <!-- Roll at midnight -->
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <!-- Also roll if a single file exceeds 100 MB -->
+                <SizeBasedTriggeringPolicy size="100MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="30">
+                <!-- Delete archives older than 30 days, keeping total under 10 GB -->
+                <Delete basePath="${LOG_DIR}/archive" maxDepth="1">
+                    <IfFileName glob="*.log.gz">
+                        <IfAny>
+                            <IfLastModified age="30d"/>
+                            <IfAccumulatedFileSize exceeds="10GB"/>
+                        </IfAny>
+                    </IfFileName>
+                </Delete>
+            </DefaultRolloverStrategy>
+            <ThresholdFilter level="INFO" onMatch="ACCEPT" onMismatch="DENY"/>
+        </RollingFile>
+
+        <!-- ── Error log file (ERROR only) ─────────────────────────────────── -->
+        <!--
+            Current file:  {LOG_DIR}/certmonitor-error.log
+            Rolled files:  {LOG_DIR}/archive/certmonitor-error-yyyy-MM-dd-{n}.log.gz
+            Retention:     90 days  OR  2 GB total — whichever is hit first
+            Kept separate so ops teams can alert on this file exclusively.
+        -->
+        <RollingFile name="ErrorFile"
+                     fileName="${LOG_DIR}/${APP_NAME}-error.log"
+                     filePattern="${LOG_DIR}/archive/${APP_NAME}-error-%d{yyyy-MM-dd}-%i.log.gz"
+                     immediateFlush="true">
+            <PatternLayout pattern="${FILE_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="50MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="90">
+                <Delete basePath="${LOG_DIR}/archive" maxDepth="1">
+                    <IfFileName glob="*-error-*.log.gz">
+                        <IfAny>
+                            <IfLastModified age="90d"/>
+                            <IfAccumulatedFileSize exceeds="2GB"/>
+                        </IfAny>
+                    </IfFileName>
+                </Delete>
+            </DefaultRolloverStrategy>
+            <!-- Only ERROR and FATAL go into this file -->
+            <ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
+        </RollingFile>
+
+    </Appenders>
+
+    <Loggers>
+
+        <!-- ── Application code ─────────────────────────────────────────────── -->
+        <Logger name="com.codecatalyst" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AppFile"/>
+            <AppenderRef ref="ErrorFile"/>
+        </Logger>
+
+        <!-- ── Hibernate SQL — set to DEBUG to see every query ──────────────── -->
+        <Logger name="org.hibernate.SQL"                    level="WARN" additivity="false">
+            <AppenderRef ref="AppFile"/>
+            <AppenderRef ref="ErrorFile"/>
+        </Logger>
+        <Logger name="org.hibernate.orm.jdbc.bind"          level="WARN" additivity="false">
+            <AppenderRef ref="AppFile"/>
+        </Logger>
+
+        <!-- ── HikariCP connection pool ─────────────────────────────────────── -->
+        <Logger name="com.zaxxer.hikari"                    level="WARN" additivity="false">
+            <AppenderRef ref="AppFile"/>
+            <AppenderRef ref="ErrorFile"/>
+        </Logger>
+
+        <!-- ── Spring framework — suppress routine startup noise ────────────── -->
+        <Logger name="org.springframework"                  level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AppFile"/>
+            <AppenderRef ref="ErrorFile"/>
+        </Logger>
+        <Logger name="org.springframework.web"              level="WARN" additivity="false">
+            <AppenderRef ref="AppFile"/>
+            <AppenderRef ref="ErrorFile"/>
+        </Logger>
+
+        <!-- ── Root — catch-all for anything not matched above ──────────────── -->
+        <Root level="WARN">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AppFile"/>
+            <AppenderRef ref="ErrorFile"/>
+        </Root>
+
+    </Loggers>
+
+</Configuration>

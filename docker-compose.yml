@@ -1,9 +1,6 @@
 services:
 
   # ── PostgreSQL Database ──────────────────────────────────────────────────────
-  # Uses the official postgres image directly.
-  # schema.sql is mounted into /docker-entrypoint-initdb.d/ and runs automatically
-  # the first time the container starts against an empty data volume.
   db:
     image: postgres:16-alpine
     container_name: cert_monitor_db
@@ -25,7 +22,7 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── Spring Boot Application ──────────────────────────────────
+  # ── Spring Boot Application ──────────────────────────────────────────────────
   app:
     build:
       context: .
@@ -39,13 +36,27 @@ services:
       DB_NAME: ${POSTGRES_DB}
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
-      APP_PORT: 8080
+      APP_PORT: 8443
+      KEYSTORE_BASE_DIR: /app/keystores
+      LOG_DIR: ${LOG_DIR:-/app/logs}
+      # SSL — self-signed cert generated in Dockerfile
+      # For production: mount a real cert and update these paths
+      SSL_ENABLED: "true"
+      SSL_KEY_STORE: /app/ssl/certmonitor.jks
+      SSL_KEY_STORE_PASSWORD: certmonitor_ssl
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "${APP_PORT:-8443}:8443"
+    volumes:
+      - keystore_data:/app/keystores
+      - log_data:/app/logs
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   postgres_data:
+    driver: local
+  keystore_data:
+    driver: local
+  log_data:
     driver: local

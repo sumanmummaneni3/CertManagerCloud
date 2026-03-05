@@ -3,7 +3,7 @@ package com.codecatalyst.service;
 import com.codecatalyst.entity.Organization;
 import com.codecatalyst.entity.User;
 import com.codecatalyst.enums.UserRole;
-import com.codecatalyst.exceptions.ResourceNotFoundException;
+import com.codecatalyst.exception.ResourceNotFoundException;
 import com.codecatalyst.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

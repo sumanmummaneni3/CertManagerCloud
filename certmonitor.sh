@@ -26,7 +26,7 @@ APP_SERVICE="app"
 DB_SERVICE="db"
 APP_CONTAINER="cert_monitor_app"
 DB_CONTAINER="cert_monitor_db"
-APP_PORT="${APP_PORT:-8080}"
+APP_PORT="${APP_PORT:-8443}"
 DB_PORT="${DB_PORT:-5432}"
 POSTGRES_IMAGE="postgres:16-alpine"
 
@@ -377,7 +377,7 @@ cmd_start() {
 
     info "Waiting for application to be ready on port ${APP_PORT}..."
     local retries=30 count=0
-    until curl -sf "http://localhost:${APP_PORT}" &>/dev/null || [ $count -ge $retries ]; do
+    until curl -sfk "https://localhost:${APP_PORT}" &>/dev/null || [ $count -ge $retries ]; do
         sleep 2; count=$((count+1))
         echo -ne "\r  Attempt $count/$retries..."
     done
@@ -467,7 +467,7 @@ cmd_status() {
     fi
 
     echo -e "\n${BOLD}Endpoints:${RESET}"
-    if curl -sf "http://localhost:${APP_PORT}" &>/dev/null; then
+    if curl -sfk "https://localhost:${APP_PORT}" &>/dev/null; then
         success "  REST API   http://localhost:${APP_PORT}/api/v1"
     else
         warn "  REST API   http://localhost:${APP_PORT}/api/v1  (not reachable)"

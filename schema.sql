@@ -1,44 +1,45 @@
 -- ============================================================
--- Database Schema Creation Script
+-- CertMonitor Database Schema
 -- ============================================================
 
--- Enable UUID extension (recommended for cloud-based PKs)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================
--- ENUM Types
--- ============================================================
-
-CREATE TYPE user_role AS ENUM ('ADMIN', 'READ_ONLY');
-
--- ============================================================
 -- Table: organization
+-- The primary tenant boundary. Every target and certificate
+-- is owned by exactly one organization.
 -- ============================================================
 
 CREATE TABLE organization (
     id                  UUID            PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name                VARCHAR(255)    NOT NULL,
-    keystore_location   TEXT            NOT NULL,
-    api_key             VARCHAR(512)    NOT NULL UNIQUE,
+    name                VARCHAR(255)    NOT NULL UNIQUE,
+    keystore_location   TEXT            NOT NULL DEFAULT 'pending',
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================
 -- Table: "user"
--- Note: "user" is a reserved word in PostgreSQL, hence quoted
+-- Provisioned automatically on first Google OAuth2 login.
+-- google_sub is the stable Google subject identifier (never changes
+-- even if the user changes their email address).
+-- The first user in an org is automatically assigned ADMIN role.
 -- ============================================================
 
 CREATE TABLE "user" (
     id          UUID            PRIMARY KEY DEFAULT uuid_generate_v4(),
     org_id      UUID            NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
     email       VARCHAR(320)    NOT NULL UNIQUE,
-    role        user_role       NOT NULL DEFAULT 'READ_ONLY',
+    name        VARCHAR(255)    NULL,
+    google_sub  VARCHAR(255)    NOT NULL UNIQUE,
+    role        VARCHAR(20)     NOT NULL DEFAULT 'READ_ONLY'
+                                CHECK (role IN ('ADMIN', 'READ_ONLY')),
     created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_user_org_id ON "user"(org_id);
+CREATE INDEX idx_user_org_id    ON "user"(org_id);
+CREATE INDEX idx_user_google_sub ON "user"(google_sub);
 
 -- ============================================================
 -- Table: target
@@ -75,12 +76,12 @@ CREATE TABLE certificate_record (
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_cert_target_id  ON certificate_record(target_id);
-CREATE INDEX idx_cert_org_id     ON certificate_record(org_id);
-CREATE INDEX idx_cert_expiry     ON certificate_record(expiry_date);
+CREATE INDEX idx_cert_target_id ON certificate_record(target_id);
+CREATE INDEX idx_cert_org_id    ON certificate_record(org_id);
+CREATE INDEX idx_cert_expiry    ON certificate_record(expiry_date);
 
 -- ============================================================
--- Auto-update updated_at via trigger function
+-- Auto-update updated_at trigger
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION trigger_set_updated_at()

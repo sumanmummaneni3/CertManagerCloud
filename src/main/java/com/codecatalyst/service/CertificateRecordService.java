@@ -1,10 +1,9 @@
 package com.codecatalyst.service;
 
-
 import com.codecatalyst.entity.CertificateRecord;
 import com.codecatalyst.entity.Organization;
 import com.codecatalyst.entity.Target;
-import com.codecatalyst.exceptions.ResourceNotFoundException;
+import com.codecatalyst.exception.ResourceNotFoundException;
 import com.codecatalyst.repository.CertificateRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

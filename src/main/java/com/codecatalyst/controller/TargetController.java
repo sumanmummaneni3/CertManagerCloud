@@ -1,6 +1,7 @@
 package com.codecatalyst.controller;
 
 import com.codecatalyst.entity.Target;
+import com.codecatalyst.security.OrgSecurityService;
 import com.codecatalyst.service.TargetService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,31 +17,38 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TargetController {
 
-    private final TargetService service;
+    private final TargetService      service;
+    private final OrgSecurityService orgSecurity;
 
     @GetMapping
     public List<Target> getAll(@PathVariable UUID orgId) {
+        orgSecurity.assertOrgAccess(orgId);
         return service.findByOrg(orgId);
     }
 
     @GetMapping("/{id}")
     public Target getById(@PathVariable UUID orgId, @PathVariable UUID id) {
+        orgSecurity.assertOrgAccess(orgId);
         return service.findById(id);
     }
 
     @PostMapping
-    public ResponseEntity<Target> create(@PathVariable UUID orgId, @Valid @RequestBody Target target) {
+    public ResponseEntity<Target> create(@PathVariable UUID orgId,
+                                         @Valid @RequestBody Target target) {
+        orgSecurity.assertOrgAccess(orgId);
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(orgId, target));
     }
 
     @PutMapping("/{id}")
     public Target update(@PathVariable UUID orgId, @PathVariable UUID id,
                          @Valid @RequestBody Target target) {
+        orgSecurity.assertOrgAccess(orgId);
         return service.update(id, target);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID orgId, @PathVariable UUID id) {
+        orgSecurity.assertOrgAccess(orgId);
         service.delete(id);
         return ResponseEntity.noContent().build();
     }

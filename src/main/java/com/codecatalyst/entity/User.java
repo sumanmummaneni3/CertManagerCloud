@@ -11,11 +11,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "\"user\"")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class User {
 
     @Id
@@ -30,8 +26,20 @@ public class User {
     @Column(nullable = false, unique = true, length = 320)
     private String email;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    /** Display name from Google profile */
+    @Column(length = 255)
+    private String name;
+
+    /**
+     * Google's stable subject identifier (the "sub" claim from the ID token).
+     * Never changes even if the user changes their email address.
+     * Used as the primary identity key for OAuth2 lookups.
+     */
+    @Column(name = "google_sub", nullable = false, unique = true, length = 255)
+    private String googleSub;
+
+    // UserRoleConverter (autoApply = true) handles VARCHAR ↔ enum mapping
+    @Column(nullable = false)
     private UserRole role;
 
     @CreationTimestamp

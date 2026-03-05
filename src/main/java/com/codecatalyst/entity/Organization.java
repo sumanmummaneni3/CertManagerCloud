@@ -11,11 +11,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "organization")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Organization {
 
     @Id
@@ -23,14 +19,11 @@ public class Organization {
     @Column(updatable = false, nullable = false)
     private UUID id;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = false, unique = true, length = 255)
     private String name;
 
     @Column(name = "keystore_location", nullable = false, columnDefinition = "TEXT")
     private String keystoreLocation;
-
-    @Column(name = "api_key", nullable = false, unique = true, length = 512)
-    private String apiKey;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

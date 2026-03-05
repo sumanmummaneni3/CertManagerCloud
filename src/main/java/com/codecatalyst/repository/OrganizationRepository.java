@@ -9,6 +9,6 @@ import java.util.UUID;
 
 @Repository
 public interface OrganizationRepository extends JpaRepository<Organization, UUID> {
-    Optional<Organization> findByApiKey(String apiKey);
     boolean existsByName(String name);
+    Optional<Organization> findByName(String name);
 }

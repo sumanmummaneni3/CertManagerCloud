@@ -15,7 +15,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate          # Schema managed by schema.sql — JPA only validates
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
@@ -23,10 +23,45 @@ spring:
         format_sql: true
         default_schema: public
 
-server:
-  port: ${APP_PORT:8080}
+  # ── Google OAuth2 / OIDC ──────────────────────────────────────────────────
+  # Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your .env file.
+  # Obtain from: https://console.cloud.google.com → APIs & Services → Credentials
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - openid
+              - email
+              - profile
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          google:
+            issuer-uri: https://accounts.google.com
 
+server:
+  port: ${APP_PORT:8443}
+  ssl:
+    enabled: ${SSL_ENABLED:true}
+    key-store: ${SSL_KEY_STORE:/app/ssl/certmonitor.jks}
+    key-store-password: ${SSL_KEY_STORE_PASSWORD:certmonitor_ssl}
+    key-store-type: JKS
+    key-alias: certmonitor
+
+# ── CertMonitor settings ──────────────────────────────────────────────────────
+certmonitor:
+  keystore:
+    base-dir: ${KEYSTORE_BASE_DIR:./keystores}
+
+  jwt:
+    # Must be at least 32 characters. Set JWT_SECRET in your .env — never commit this.
+    secret: ${JWT_SECRET}
+    # Token lifetime in milliseconds. Default: 24 hours.
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+# ── Logging ───────────────────────────────────────────────────────────────────
 logging:
-  level:
-    com.codecatalyst: INFO
-    org.hibernate.SQL: WARN
+  config: classpath:log4j2.xml
