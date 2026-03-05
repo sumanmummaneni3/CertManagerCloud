@@ -43,7 +43,7 @@ spring:
             issuer-uri: https://accounts.google.com
 
 server:
-  port: ${APP_PORT:8443}
+  port: ${APP_PORT:443}
   ssl:
     enabled: ${SSL_ENABLED:true}
     key-store: ${SSL_KEY_STORE:/app/ssl/certmonitor.jks}
@@ -58,7 +58,8 @@ certmonitor:
 
   jwt:
     # Must be at least 32 characters. Set JWT_SECRET in your .env — never commit this.
-    secret: ${JWT_SECRET}
+    # The default below is for local dev only — always override in production.
+    secret: ${JWT_SECRET:local-dev-only-insecure-secret-do-NOT-use-in-production-replace-this}
     # Token lifetime in milliseconds. Default: 24 hours.
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 

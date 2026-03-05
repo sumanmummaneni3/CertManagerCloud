@@ -18,34 +18,41 @@ import java.util.UUID;
 /**
  * Issues and validates JWTs after a successful Google OAuth2 login.
  *
+ * JJWT requires the HMAC-SHA256 signing key to be >= 256 bits (32 bytes).
+ * We enforce >= 64 characters so that even single-byte ASCII secrets
+ * comfortably exceed the minimum and leave headroom for entropy.
+ *
  * Token claims:
  *   sub      — user UUID
  *   email    — user email
  *   orgId    — organisation UUID (tenant scope for every query)
  *   role     — ADMIN or READ_ONLY
  *   iat/exp  — issued-at / expiry
- *
- * The client sends the token on every subsequent request as:
- *   Authorization: Bearer <token>
  */
 @Service
 public class JwtService {
 
     private static final Logger log = LoggerFactory.getLogger(JwtService.class);
 
-    private final SecretKey  signingKey;
-    private final long       expirationMs;
+    private final SecretKey signingKey;
+    private final long      expirationMs;
 
     public JwtService(
             @Value("${certmonitor.jwt.secret}") String secret,
             @Value("${certmonitor.jwt.expiration-ms:86400000}") long expirationMs) {
 
-        if (secret.length() < 32) {
+        // JJWT's Keys.hmacShaKeyFor requires >= 32 bytes for HS256.
+        // Enforce 64 characters to guarantee sufficient entropy.
+        if (secret == null || secret.length() < 64) {
             throw new IllegalArgumentException(
-                    "JWT secret must be at least 32 characters — set certmonitor.jwt.secret");
+                "JWT secret must be at least 64 characters for HMAC-SHA256. " +
+                "Generate one with:  openssl rand -hex 32  " +
+                "then set JWT_SECRET in your .env file.");
         }
+
         this.signingKey   = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationMs;
+        log.info("JwtService initialised — token lifetime: {}ms", expirationMs);
     }
 
     /** Issue a signed JWT for a successfully authenticated user. */
