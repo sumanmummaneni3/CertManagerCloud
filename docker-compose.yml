@@ -44,6 +44,9 @@ services:
       SSL_ENABLED: "true"
       SSL_KEY_STORE: /app/ssl/certmonitor.jks
       SSL_KEY_STORE_PASSWORD: certmonitor_ssl
+      # JWT — loaded from .env file
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
     ports:
       - "${APP_PORT:-443}:443"
     volumes:
