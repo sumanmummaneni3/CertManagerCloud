@@ -717,6 +717,124 @@ cmd_backups() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  COMMAND: setup
+#  Validates .env and auto-generates any missing or placeholder secrets.
+#  Safe to re-run — only fills in values that are absent or still placeholders.
+# ─────────────────────────────────────────────────────────────────────────────
+cmd_setup() {
+    header "Environment Setup"
+
+    # ── Create .env from example if it doesn't exist ─────────────────────────
+    if [[ ! -f "$ENV_FILE" ]]; then
+        if [[ -f "$SCRIPT_DIR/.env.example" ]]; then
+            cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+            ok "Created .env from .env.example"
+        else
+            fatal ".env not found and no .env.example to copy from"
+        fi
+    fi
+
+    local changed=false
+
+    # ── JWT_SECRET ────────────────────────────────────────────────────────────
+    local jwt_current
+    jwt_current=$(grep "^JWT_SECRET=" "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+
+    local jwt_is_placeholder=false
+    if [[ -z "$jwt_current" ]] \
+        || [[ "$jwt_current" == *"replace-with"* ]] \
+        || [[ "$jwt_current" == *"change-me"* ]] \
+        || [[ ${#jwt_current} -lt 64 ]]; then
+        jwt_is_placeholder=true
+    fi
+
+    if $jwt_is_placeholder; then
+        local jwt_new
+        if command -v openssl &>/dev/null; then
+            jwt_new=$(openssl rand -hex 32)
+        else
+            # Fallback if openssl not available
+            jwt_new=$(cat /proc/sys/kernel/random/uuid | tr -d '-' | head -c 32)
+            jwt_new="${jwt_new}$(cat /proc/sys/kernel/random/uuid | tr -d '-' | head -c 32)"
+        fi
+
+        # Replace or append JWT_SECRET
+        if grep -q "^JWT_SECRET=" "$ENV_FILE"; then
+            sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${jwt_new}|" "$ENV_FILE"
+        else
+            echo "JWT_SECRET=${jwt_new}" >> "$ENV_FILE"
+        fi
+        ok "Generated JWT_SECRET (${#jwt_new} chars)"
+        changed=true
+    else
+        ok "JWT_SECRET already set (${#jwt_current} chars)"
+    fi
+
+    # ── POSTGRES_PASSWORD ─────────────────────────────────────────────────────
+    local pg_pass
+    pg_pass=$(grep "^POSTGRES_PASSWORD=" "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+
+    if [[ -z "$pg_pass" ]] || [[ "$pg_pass" == *"change_me"* ]] || [[ "$pg_pass" == *"password"* ]]; then
+        local pg_new
+        pg_new=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 32 || \
+                 cat /proc/sys/kernel/random/uuid | tr -d '-' | head -c 32)
+        if grep -q "^POSTGRES_PASSWORD=" "$ENV_FILE"; then
+            sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${pg_new}|" "$ENV_FILE"
+        else
+            echo "POSTGRES_PASSWORD=${pg_new}" >> "$ENV_FILE"
+        fi
+        ok "Generated POSTGRES_PASSWORD"
+        changed=true
+    else
+        ok "POSTGRES_PASSWORD already set"
+    fi
+
+    # ── Google OAuth2 — warn if still placeholder ─────────────────────────────
+    local google_id
+    google_id=$(grep "^GOOGLE_CLIENT_ID=" "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+    if [[ -z "$google_id" ]] || [[ "$google_id" == *"your-google"* ]]; then
+        warn "GOOGLE_CLIENT_ID is not set — set it in .env before starting"
+        warn "  Get credentials at: https://console.cloud.google.com"
+    else
+        ok "GOOGLE_CLIENT_ID set"
+    fi
+
+    local google_secret
+    google_secret=$(grep "^GOOGLE_CLIENT_SECRET=" "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")
+    if [[ -z "$google_secret" ]] || [[ "$google_secret" == *"your-google"* ]]; then
+        warn "GOOGLE_CLIENT_SECRET is not set — set it in .env before starting"
+    else
+        ok "GOOGLE_CLIENT_SECRET set"
+    fi
+
+    echo
+    if $changed; then
+        ok ".env updated — secrets generated"
+        warn "Keep .env private — never commit it to version control"
+    else
+        ok "All required secrets are already configured"
+    fi
+
+    echo
+    echo -e "${BOLD}Current .env values:${RESET}"
+    divider
+    while IFS= read -r line; do
+        # Mask secret values, show keys and non-sensitive values
+        if [[ "$line" =~ ^(JWT_SECRET|POSTGRES_PASSWORD|GOOGLE_CLIENT_SECRET|SSL_KEY_STORE_PASSWORD)= ]]; then
+            local key="${line%%=*}"
+            local val="${line#*=}"
+            local masked="${val:0:4}$(printf '*%.0s' $(seq 1 $((${#val} - 4))))"
+            echo "  ${key}=${masked}"
+        elif [[ "$line" =~ ^# ]] || [[ -z "$line" ]]; then
+            : # skip comments and blank lines
+        else
+            echo "  $line"
+        fi
+    done < "$ENV_FILE"
+    echo
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  HELP
 # ─────────────────────────────────────────────────────────────────────────────
 cmd_help() {
@@ -728,6 +846,7 @@ ${BOLD}USAGE${RESET}
   ./certmanage.sh <command> [args]
 
 ${BOLD}LIFECYCLE${RESET}
+  ${GREEN}setup${RESET}            Validate .env and auto-generate any missing secrets
   ${GREEN}start${RESET}            Start all containers (preserves all data)
   ${GREEN}stop${RESET}             Stop all containers gracefully (preserves all data)
   ${GREEN}restart${RESET}          Stop then start
@@ -754,6 +873,7 @@ ${BOLD}MIGRATION SAFETY RULES${RESET}
   • db:restore takes a safety backup of current state before overwriting
 
 ${BOLD}EXAMPLES${RESET}
+  ./certmanage.sh setup
   ./certmanage.sh start
   ./certmanage.sh db:backup
   ./certmanage.sh db:migrate
@@ -774,6 +894,7 @@ main() {
         stop)         cmd_stop ;;
         restart)      cmd_restart ;;
         status)       cmd_status ;;
+        setup)        cmd_setup ;;
         db:migrate)   cmd_db_migrate ;;
         db:backup)    cmd_db_backup ;;
         db:restore)   cmd_db_restore "${2:-}" ;;

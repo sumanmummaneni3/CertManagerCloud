@@ -45,7 +45,7 @@ services:
       SSL_KEY_STORE: /app/ssl/certmonitor.jks
       SSL_KEY_STORE_PASSWORD: certmonitor_ssl
       # JWT — loaded from .env file
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-local-dev-only-insecure-secret-do-NOT-use-in-production-replace-this}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
     ports:
       - "${APP_PORT:-443}:443"
