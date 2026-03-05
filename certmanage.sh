@@ -123,7 +123,7 @@ cmd_start() {
 
     wait_for_db
 
-    local app_port="${APP_PORT:-8443}"
+    local app_port="${APP_PORT:-443}"
     ok "CertMonitor is running"
     echo -e "  App:  ${BOLD}https://localhost:${app_port}${RESET}"
     echo -e "  DB:   ${BOLD}localhost:${DB_PORT:-5432}${RESET}"
@@ -688,7 +688,7 @@ cmd_app_rebuild() {
     echo
 
     ok "Application redeployed successfully"
-    echo -e "  App: ${BOLD}https://localhost:${APP_PORT:-8443}${RESET}"
+    echo -e "  App: ${BOLD}https://localhost:${APP_PORT:-443}${RESET}"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

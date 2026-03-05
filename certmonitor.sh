@@ -26,7 +26,7 @@ APP_SERVICE="app"
 DB_SERVICE="db"
 APP_CONTAINER="cert_monitor_app"
 DB_CONTAINER="cert_monitor_db"
-APP_PORT="${APP_PORT:-8443}"
+APP_PORT="${APP_PORT:-443}"
 DB_PORT="${DB_PORT:-5432}"
 POSTGRES_IMAGE="postgres:16-alpine"
 
