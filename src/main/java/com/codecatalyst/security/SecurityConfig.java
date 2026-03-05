@@ -30,7 +30,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * │ GET  /oauth2/authorization/google          │ public  │ public    │
  * │ GET  /api/v1/me                            │ ✅      │ ✅        │
  * │ GET  /api/v1/organizations/**              │ ✅      │ ✅        │
- * │ POST /**/fetch-certificate(s)              │ ✅      │ ❌        │
+ * │ POST /-*-/fetch-certificate(s)             │ ✅      │ ❌        │
  * │ POST/PUT/DELETE /api/v1/organizations/**   │ ✅      │ ❌        │
  * └────────────────────────────────────────────┴─────────┴───────────┘
  */
