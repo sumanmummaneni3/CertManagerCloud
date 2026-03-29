@@ -1,59 +1,77 @@
 package com.codecatalyst.entity;
 
+import com.codecatalyst.enums.CertStatus;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
-@Entity
-@Table(name = "certificate_record")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class CertificateRecord {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(updatable = false, nullable = false)
-    private UUID id;
+@Entity @Table(name = "certificate_records")
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+public class CertificateRecord extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "target_id", nullable = false)
     private Target target;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "org_id", nullable = false)
-    private Organization organization;
+    @Column(name = "org_id", nullable = false)
+    private UUID orgId;
 
-    @Column(name = "common_name", nullable = false, length = 255)
+    @Column(name = "common_name", nullable = false)
     private String commonName;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = false)
     private String issuer;
 
+    @Column(name = "serial_number", nullable = false)
+    private String serialNumber;
+
     @Column(name = "expiry_date", nullable = false)
-    private LocalDate expiryDate;
+    private Instant expiryDate;
 
-    @Column(name = "client_org_name", length = 255)
-    private String clientOrgName;        // Optional
+    @Column(name = "not_before", nullable = false)
+    private Instant notBefore;
 
-    @Column(name = "division_name", length = 255)
-    private String divisionName;         // Optional
+    @Column(name = "public_cert_b64", columnDefinition = "TEXT")
+    private String publicCertB64;
 
-    @Column(nullable = false, length = 50)
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "cert_status")
+    @Builder.Default
+    private CertStatus status = CertStatus.VALID;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
+    @Column(name = "client_org_name")
+    private String clientOrgName;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
+    @Column(name = "division_name")
+    private String divisionName;
+
+    @Column(name = "key_algorithm", length = 20)
+    private String keyAlgorithm;
+
+    @Column(name = "key_size")
+    private Integer keySize;
+
+    @Column(name = "signature_algorithm", length = 50)
+    private String signatureAlgorithm;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "subject_alt_names", columnDefinition = "jsonb")
+    private List<String> subjectAltNames;
+
+    @Column(name = "chain_depth")
+    private Integer chainDepth;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "scanned_by_agent_id")
+    private Agent scannedByAgent;
+
+    @Column(name = "scanned_at", nullable = false)
+    @Builder.Default
+    private Instant scannedAt = Instant.now();
 }

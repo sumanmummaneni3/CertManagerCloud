@@ -3,50 +3,30 @@ package com.codecatalyst.entity;
 import com.codecatalyst.enums.UserRole;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-import java.time.OffsetDateTime;
 import java.util.UUID;
 
-@Entity
-@Table(name = "\"user\"")
+@Entity @Table(name = "users")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class User {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(updatable = false, nullable = false)
-    private UUID id;
+public class User extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "org_id", nullable = false)
     private Organization organization;
 
-    @Column(nullable = false, unique = true, length = 320)
+    @Column(nullable = false, unique = true)
     private String email;
 
-    /** Display name from Google profile */
-    @Column(length = 255)
     private String name;
 
-    /**
-     * Google's stable subject identifier (the "sub" claim from the ID token).
-     * Never changes even if the user changes their email address.
-     * Used as the primary identity key for OAuth2 lookups.
-     */
-    @Column(name = "google_sub", nullable = false, unique = true, length = 255)
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "user_role")
+    @Builder.Default
+    private UserRole role = UserRole.MEMBER;
+
+    @Column(name = "google_sub", unique = true)
     private String googleSub;
-
-    // UserRoleConverter (autoApply = true) handles VARCHAR ↔ enum mapping
-    @Column(nullable = false)
-    private UserRole role;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
 }

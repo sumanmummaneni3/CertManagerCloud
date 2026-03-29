@@ -1,55 +1,259 @@
 package com.codecatalyst.service;
 
-import com.codecatalyst.entity.Organization;
-import com.codecatalyst.entity.Target;
+import com.codecatalyst.dto.request.CreateTargetRequest;
+import com.codecatalyst.dto.request.UpdateTargetRequest;
+import com.codecatalyst.dto.response.CertificateSummary;
+import com.codecatalyst.dto.response.ScanStatusResponse;
+import com.codecatalyst.dto.response.TargetResponse;
+import com.codecatalyst.entity.*;
+import com.codecatalyst.enums.HostType;
+import com.codecatalyst.exception.QuotaExceededException;
 import com.codecatalyst.exception.ResourceNotFoundException;
-import com.codecatalyst.repository.TargetRepository;
+import com.codecatalyst.repository.*;
+import com.codecatalyst.util.HostTypeDetector;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.InetAddress;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class TargetService {
 
-    private final TargetRepository repository;
-    private final OrganizationService organizationService;
+    private final TargetRepository targetRepository;
+    private final OrganizationRepository organizationRepository;
+    private final SubscriptionRepository subscriptionRepository;
+    private final CertificateRecordRepository certRepository;
+    private final AgentRepository agentRepository;
+    private final AgentScanJobRepository scanJobRepository;
 
-    public List<Target> findByOrg(UUID orgId) {
-        return repository.findByOrganizationId(orgId);
-    }
-
-    public Target findById(UUID id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Target not found: " + id));
-    }
-
-    @Transactional
-    public Target create(UUID orgId, Target target) {
-        Organization org = organizationService.findById(orgId);
-        repository.findByOrganizationIdAndHostAndPort(orgId, target.getHost(), target.getPort())
-                .ifPresent(t -> { throw new IllegalArgumentException(
-                        "Target already exists for host:port " + target.getHost() + ":" + target.getPort()); });
-        target.setOrganization(org);
-        return repository.save(target);
+    @Transactional(readOnly = true)
+    public Page<TargetResponse> listTargets(UUID orgId, Pageable pageable) {
+        return targetRepository.findAllByOrganizationId(orgId, pageable).map(this::toResponse);
     }
 
     @Transactional
-    public Target update(UUID id, Target updated) {
-        Target existing = findById(id);
-        existing.setHost(updated.getHost());
-        existing.setPort(updated.getPort());
-        existing.setPrivate(updated.isPrivate());
-        return repository.save(existing);
+    public TargetResponse createTarget(UUID orgId, CreateTargetRequest request) {
+        enforceTargetQuota(orgId);
+        String host = request.getHost().trim().toLowerCase();
+
+        if (targetRepository.existsByOrganizationIdAndHostAndPort(orgId, host, request.getPort()))
+            throw new IllegalArgumentException("Target already exists: " + host + ":" + request.getPort());
+
+        Organization org = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("Organization not found"));
+
+        HostType hostType = HostTypeDetector.detect(host);
+        boolean isPrivate = request.isPrivate();
+        if (!isPrivate && HostTypeDetector.shouldDefaultToPrivate(host)) {
+            isPrivate = true;
+            log.info("Auto-set isPrivate=true for internal host: {}", host);
+        }
+
+        Agent agent = null;
+        if (isPrivate && request.getAgentId() != null) {
+            agent = agentRepository.findByIdAndOrganizationId(request.getAgentId(), orgId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Agent not found"));
+
+            // Quota check
+            if (agent.getCurrentTargetCount() >= agent.getMaxTargets())
+                throw new QuotaExceededException(
+                    "Agent has reached its max-targets limit of " + agent.getMaxTargets()
+                    + ". Remove existing targets or increase the limit.");
+
+            // CIDR validation — only for IP addresses, skip for hostnames
+            if (hostType == HostType.IP || hostType == HostType.DOMAIN) {
+                validateHostInAgentCidrs(host, agent);
+            } else {
+                log.info("Skipping CIDR check for hostname '{}' — will be enforced by agent at scan time", host);
+            }
+        }
+
+        Target target = Target.builder()
+                .organization(org).host(host).port(request.getPort())
+                .hostType(hostType).isPrivate(isPrivate)
+                .description(request.getDescription()).agent(agent).enabled(true)
+                .build();
+        target = targetRepository.save(target);
+
+        if (agent != null) {
+            agent.setCurrentTargetCount(agent.getCurrentTargetCount() + 1);
+            agentRepository.save(agent);
+        }
+
+        log.info("Target created: {} [{}] :{} private={}", host, hostType, target.getPort(), isPrivate);
+        return toResponse(target);
     }
 
     @Transactional
-    public void delete(UUID id) {
-        Target target = findById(id);
-        repository.delete(target);
+    public TargetResponse updateTarget(UUID orgId, UUID targetId, UpdateTargetRequest request) {
+        Target target = findTargetForOrg(orgId, targetId);
+        if (request.getHost() != null) {
+            String host = request.getHost().trim().toLowerCase();
+            int newPort = request.getPort() != null ? request.getPort() : target.getPort();
+            if (!host.equals(target.getHost()) || newPort != target.getPort()) {
+                if (targetRepository.existsByOrganizationIdAndHostAndPort(orgId, host, newPort))
+                    throw new IllegalArgumentException("Target already exists: " + host + ":" + newPort);
+            }
+            target.setHost(host);
+            target.setHostType(HostTypeDetector.detect(host));
+        }
+        if (request.getPort() != null)        target.setPort(request.getPort());
+        if (request.getIsPrivate() != null)   target.setIsPrivate(request.getIsPrivate());
+        if (request.getEnabled() != null)     target.setEnabled(request.getEnabled());
+        if (request.getDescription() != null) target.setDescription(request.getDescription());
+        return toResponse(targetRepository.save(target));
+    }
+
+    @Transactional
+    public void deleteTarget(UUID orgId, UUID targetId) {
+        Target target = findTargetForOrg(orgId, targetId);
+
+        // Decrement agent target count when a private target is removed
+        if (target.getIsPrivate() && target.getAgent() != null) {
+            Agent agent = target.getAgent();
+            int newCount = Math.max(0, agent.getCurrentTargetCount() - 1);
+            agent.setCurrentTargetCount(newCount);
+            agentRepository.save(agent);
+            log.info("Decremented target count for agent '{}' to {}", agent.getName(), newCount);
+        }
+
+        targetRepository.delete(target);
+    }
+
+    /**
+     * Triggers a scan for a target.
+     * - Public target → direct SSL scan via SslScannerService (synchronous)
+     * - Private target → queue an agent_scan_job (async, agent picks up within poll interval)
+     */
+    @Transactional
+    public String triggerScan(UUID orgId, UUID targetId,
+                               SslScannerService sslScannerService,
+                               AgentService agentService) {
+        Target target = findTargetForOrg(orgId, targetId);
+
+        if (!target.getIsPrivate()) {
+            // Public — scan directly
+            sslScannerService.scanTarget(target);
+            return "Scan triggered for " + target.getHost();
+        }
+
+        // Private — queue job for agent
+        if (target.getAgent() == null) {
+            throw new IllegalStateException(
+                "Private target has no assigned agent. Assign an agent before scanning.");
+        }
+        agentService.queueScanJob(target);
+        return "Scan job queued for agent '" + target.getAgent().getName() + "'";
+    }
+
+    /**
+     * Returns the latest scan job status for a target.
+     * Used by the UI to poll PENDING → CLAIMED → COMPLETED after triggering a scan.
+     */
+    @Transactional(readOnly = true)
+    public ScanStatusResponse getLatestScanStatus(UUID orgId, UUID targetId) {
+        findTargetForOrg(orgId, targetId); // auth check
+        List<AgentScanJob> jobs = scanJobRepository.findByTargetIdOrderByCreatedAtDesc(targetId);
+        if (jobs.isEmpty()) return null;
+        AgentScanJob job = jobs.get(0);
+        return ScanStatusResponse.builder()
+                .jobId(job.getId())
+                .targetId(targetId)
+                .status(job.getStatus())
+                .resultType(job.getResultType())
+                .errorMsg(job.getErrorMsg())
+                .createdAt(job.getCreatedAt())
+                .claimedAt(job.getClaimedAt())
+                .completedAt(job.getCompletedAt())
+                .build();
+    }
+
+    // ── Private helpers ────────────────────────────────────────
+
+    private void validateHostInAgentCidrs(String host, Agent agent) {
+        if (agent.getAllowedCidrs() == null || agent.getAllowedCidrs().isEmpty()) {
+            log.warn("Agent '{}' has no allowed CIDRs — skipping CIDR validation", agent.getName());
+            return;
+        }
+        try {
+            InetAddress addr = InetAddress.getByName(host);
+            byte[] addrBytes = addr.getAddress();
+            for (String cidr : agent.getAllowedCidrs()) {
+                if (isInCidr(addrBytes, cidr)) return; // passes
+            }
+            throw new IllegalArgumentException(
+                "Host '" + host + "' is not within any of the agent's allowed CIDRs: "
+                + agent.getAllowedCidrs()
+                + ". Update the agent's allowed-cidrs setting to include this host.");
+        } catch (java.net.UnknownHostException e) {
+            log.warn("Could not resolve '{}' for CIDR check — allowing", host);
+        }
+    }
+
+    private boolean isInCidr(byte[] addrBytes, String cidr) {
+        try {
+            String[] parts  = cidr.split("/");
+            byte[] netBytes = InetAddress.getByName(parts[0]).getAddress();
+            if (netBytes.length != addrBytes.length) return false;
+            int prefix = Integer.parseInt(parts[1]);
+            int full   = prefix / 8;
+            int rem    = prefix % 8;
+            for (int i = 0; i < full; i++)
+                if (addrBytes[i] != netBytes[i]) return false;
+            if (rem > 0) {
+                int mask = 0xFF & (0xFF << (8 - rem));
+                if ((addrBytes[full] & mask) != (netBytes[full] & mask)) return false;
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private Target findTargetForOrg(UUID orgId, UUID targetId) {
+        return targetRepository.findByIdAndOrganizationId(targetId, orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("Target not found: " + targetId));
+    }
+
+    private void enforceTargetQuota(UUID orgId) {
+        Subscription sub = subscriptionRepository.findByOrganizationId(orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("No subscription found"));
+        long current = targetRepository.countByOrganizationId(orgId);
+        if (current >= sub.getMaxTargets())
+            throw new QuotaExceededException("Target limit of " + sub.getMaxTargets() + " reached.");
+    }
+
+    private TargetResponse toResponse(Target target) {
+        CertificateSummary certSummary = certRepository.findAllByTargetId(target.getId())
+                .stream().max((a, b) -> a.getScannedAt().compareTo(b.getScannedAt()))
+                .map(this::toCertSummary).orElse(null);
+
+        return TargetResponse.builder()
+                .id(target.getId()).host(target.getHost()).port(target.getPort())
+                .hostType(target.getHostType()).isPrivate(target.getIsPrivate())
+                .description(target.getDescription()).enabled(target.getEnabled())
+                .lastScannedAt(target.getLastScannedAt()).createdAt(target.getCreatedAt())
+                .agentId(target.getAgent() != null ? target.getAgent().getId() : null)
+                .agentName(target.getAgent() != null ? target.getAgent().getName() : null)
+                .latestCertificate(certSummary)
+                .build();
+    }
+
+    private CertificateSummary toCertSummary(CertificateRecord cert) {
+        long days = ChronoUnit.DAYS.between(Instant.now(), cert.getExpiryDate());
+        return CertificateSummary.builder()
+                .id(cert.getId()).commonName(cert.getCommonName()).issuer(cert.getIssuer())
+                .expiryDate(cert.getExpiryDate()).daysRemaining(days).status(cert.getStatus())
+                .build();
     }
 }

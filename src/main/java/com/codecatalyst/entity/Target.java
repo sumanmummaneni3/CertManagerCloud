@@ -1,52 +1,55 @@
 package com.codecatalyst.entity;
 
+import com.codecatalyst.enums.HostType;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
-@Entity
-@Table(
-    name = "target",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"org_id", "host", "port"})
-)
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Target {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(updatable = false, nullable = false)
-    private UUID id;
+@Entity @Table(name = "targets")
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+public class Target extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "org_id", nullable = false)
     private Organization organization;
 
-    @Column(nullable = false, length = 253)
+    @Column(nullable = false)
     private String host;
 
     @Column(nullable = false)
-    private Integer port;
+    @Builder.Default
+    private Integer port = 443;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "host_type", nullable = false, columnDefinition = "host_type")
+    @Builder.Default
+    private HostType hostType = HostType.DOMAIN;
 
     @Column(name = "is_private", nullable = false)
-    private boolean isPrivate;
+    @Builder.Default
+    private Boolean isPrivate = false;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
+    @Column(length = 255)
+    private String description;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean enabled = true;
 
-    @OneToMany(mappedBy = "target", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<CertificateRecord> certificateRecords;
+    @Column(name = "last_scanned_at")
+    private Instant lastScannedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "agent_id")
+    private Agent agent;
+
+    @OneToMany(mappedBy = "target", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<CertificateRecord> certificates = new ArrayList<>();
 }

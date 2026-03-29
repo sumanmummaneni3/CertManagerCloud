@@ -1,6 +1,2 @@
 package com.codecatalyst.enums;
-
-public enum UserRole {
-    ADMIN,
-    READ_ONLY
-}
+public enum UserRole { ADMIN, MEMBER, VIEWER }

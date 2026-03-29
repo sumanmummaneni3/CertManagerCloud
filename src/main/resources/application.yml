@@ -1,68 +1,114 @@
 spring:
   application:
-    name: certmonitorcloud
-
+    name: certguard-cloud
+  web:
+    resources:
+      add-mappings: true
+      static-locations: classpath:/static/
+      cache:
+        period: 3600
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:cert_monitor}
-    username: ${DB_USER:cert_admin}
-    password: ${DB_PASSWORD:change_me_to_a_strong_password}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/certguard}
+    username: ${SPRING_DATASOURCE_USERNAME:certguard_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:certguard_pass}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+      maximum-pool-size: 20
+      minimum-idle: 5
       connection-timeout: 30000
-      idle-timeout: 600000
-
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
+    defer-datasource-initialization: false
     show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         default_schema: public
-
-  # ── Google OAuth2 / OIDC ──────────────────────────────────────────────────
-  # Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your .env file.
-  # Obtain from: https://console.cloud.google.com → APIs & Services → Credentials
+  flyway:
+    enabled: false
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_DEFAULT_USER:certguard_rmq}
+    password: ${RABBITMQ_DEFAULT_PASS:certguard_rmq_pass}
+    virtual-host: ${RABBITMQ_VHOST:/certguard}
   security:
     oauth2:
       client:
         registration:
           google:
-            client-id: ${GOOGLE_CLIENT_ID}
-            client-secret: ${GOOGLE_CLIENT_SECRET}
+            client-id: ${GOOGLE_CLIENT_ID:mock-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:mock-client-secret}
             scope:
-              - openid
               - email
               - profile
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-        provider:
-          google:
-            issuer-uri: https://accounts.google.com
+            redirect-uri: "{baseUrl}/login/oauth2/code/google"
+
+app:
+  dev-mode: ${APP_DEV_MODE:true}
+  jwt:
+    secret: ${JWT_SECRET:local-dev-secret-key-change-this-in-production-must-be-at-least-64-chars!!}
+    expiration-ms: 86400000
+  base-url: ${APP_BASE_URL:http://localhost:8080}
+  alert:
+    warning-days: ${ALERT_THRESHOLD_WARNING_DAYS:30}
+    critical-days: ${ALERT_THRESHOLD_CRITICAL_DAYS:7}
+  scanning:
+    public:
+      thread-pool-size: 20
+      connect-timeout-ms: 10000
+      handshake-timeout-ms: 15000
+      retry-max-attempts: 3
+      schedule-cron: "0 0 2 * * *"
+  agent:
+    cert:
+      validity-days: 365
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    com.codecatalyst: INFO
+    org.springframework.security: DEBUG
+    org.flywaydb: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
 
 server:
-  port: ${APP_PORT:443}
+  port: 8443
   ssl:
-    enabled: ${SSL_ENABLED:true}
-    key-store: ${SSL_KEY_STORE:/app/ssl/certmonitor.jks}
-    key-store-password: ${SSL_KEY_STORE_PASSWORD:certmonitor_ssl}
-    key-store-type: JKS
-    key-alias: certmonitor
+    enabled: true
+    key-store: /opt/certguard/certs/certguard.p12
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:certguard123}
+    key-store-type: PKCS12
+    key-alias: certguard
+    enabled-protocols: TLSv1.2,TLSv1.3
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: never
+    include-exception: false
 
-# ── CertMonitor settings ──────────────────────────────────────────────────────
-certmonitor:
-  keystore:
-    base-dir: ${KEYSTORE_BASE_DIR:./keystores}
-
-  jwt:
-    # Must be at least 32 characters. Set JWT_SECRET in your .env — never commit this.
-    # The default below is for local dev only — always override in production.
-    secret: ${JWT_SECRET:local-dev-only-insecure-secret-do-NOT-use-in-production-replace-this}
-    # Token lifetime in milliseconds. Default: 24 hours.
-    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
-
-# ── Logging ───────────────────────────────────────────────────────────────────
-logging:
-  config: classpath:log4j2.xml
+  agent:
+    ca:
+      cert-path: ${AGENT_CA_CERT_PATH:/opt/certguard/certs/agent-ca.pem}
+      key-path:  ${AGENT_CA_KEY_PATH:/opt/certguard/certs/agent-ca-key.pem}
+    cert:
+      validity-days: 365
+flyway-repair:
+  placeholder: true
