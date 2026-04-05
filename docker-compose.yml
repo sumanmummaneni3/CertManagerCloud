@@ -1,65 +1,149 @@
 services:
 
-  # ── PostgreSQL Database ──────────────────────────────────────────────────────
-  db:
-    image: postgres:16-alpine
-    container_name: cert_monitor_db
+  # ─────────────────────────────────────────
+  # PostgreSQL Database
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: certguard-postgres
     restart: unless-stopped
-    env_file: .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB:       ${POSTGRES_DB}
+      POSTGRES_USER:     ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"   # Localhost only — not exposed to internet
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+    networks:
+      - certguard-net
 
-  # ── Spring Boot Application ──────────────────────────────────────────────────
+  # ─────────────────────────────────────────
+  # RabbitMQ Message Broker (Phase 3 ready)
+  # ─────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: certguard-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER:  ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS:  ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    ports:
+      - "127.0.0.1:5672:5672"    # AMQP — localhost only
+      - "127.0.0.1:15672:15672"  # Management UI — localhost only
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - certguard-net
+
+  # ─────────────────────────────────────────
+  # CertGuard Spring Boot Application
+  # ─────────────────────────────────────────
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cert_monitor_app
+    container_name: certguard-app
     restart: unless-stopped
-    env_file: .env
-    environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${POSTGRES_DB}
-      DB_USER: ${POSTGRES_USER}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      APP_PORT: 443
-      KEYSTORE_BASE_DIR: /app/keystores
-      LOG_DIR: ${LOG_DIR:-/app/logs}
-      # SSL — self-signed cert generated in Dockerfile
-      # For production: mount a real cert and update these paths
-      SSL_ENABLED: "true"
-      SSL_KEY_STORE: /app/ssl/certmonitor.jks
-      SSL_KEY_STORE_PASSWORD: certmonitor_ssl
-      # JWT — loaded from .env file
-      JWT_SECRET: ${JWT_SECRET:-local-dev-only-insecure-secret-do-NOT-use-in-production-replace-this}
-      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
-    ports:
-      - "${APP_PORT:-443}:443"
-    volumes:
-      - keystore_data:/app/keystores
-      - log_data:/app/logs
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET:                 ${JWT_SECRET:-local-dev-secret-key-change-this-in-production-must-be-at-least-64-chars!!}
+      GOOGLE_CLIENT_ID:           ${GOOGLE_CLIENT_ID:-mock-client-id}
+      GOOGLE_CLIENT_SECRET:       ${GOOGLE_CLIENT_SECRET:-mock-client-secret}
+      RABBITMQ_HOST:              rabbitmq
+      RABBITMQ_DEFAULT_USER:      ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS:      ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_VHOST:             ${RABBITMQ_VHOST}
+      APP_BASE_URL:               ${APP_BASE_URL}
+      SSL_KEYSTORE_PASSWORD:      ${SSL_KEYSTORE_PASSWORD:-localdevpassword}
+      ALERT_THRESHOLD_WARNING_DAYS:  ${ALERT_THRESHOLD_WARNING_DAYS:-30}
+      ALERT_THRESHOLD_CRITICAL_DAYS: ${ALERT_THRESHOLD_CRITICAL_DAYS:-7}
+      JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseContainerSupport"
+    ports:
+      - "58244:8443"
+    volumes:
+      - app_keystores:/opt/certguard/keystores
+      - /opt/certguard/certs:/opt/certguard/certs:ro
+      - ./certs:/opt/certguard/certs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --no-check-certificate -O- https://localhost:8443/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - certguard-net
 
+  # NGINX removed - Spring Boot handles HTTPS directly on port 443
+  # Add back if you need path-based routing or multiple services behind one IP
+
+  # ─────────────────────────────────────────
+  # Prometheus Monitoring
+  # ─────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: certguard-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - certguard-net
+
+  # ─────────────────────────────────────────
+  # Grafana Dashboards
+  # ─────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: certguard-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-changeme}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - certguard-net
+
+# ─────────────────────────────────────────
+# Named Volumes
+# ─────────────────────────────────────────
 volumes:
   postgres_data:
-    driver: local
-  keystore_data:
-    driver: local
-  log_data:
-    driver: local
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
+  app_keystores:
+
+# ─────────────────────────────────────────
+# Internal Network
+# ─────────────────────────────────────────
+networks:
+  certguard-net:
+    driver: bridge

@@ -1,47 +1,30 @@
-# ─────────────────────────────────────────────
-# Stage 1: Build
-# ─────────────────────────────────────────────
-FROM maven:3.9-eclipse-temurin-21-alpine AS builder
+# ─────────────────────────────────────────
+# Runtime only — JAR is built on the host
+# before running docker compose build
+# ─────────────────────────────────────────
+FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
-COPY pom.xml .
-RUN mvn dependency:go-offline -q
+# Add non-root user for security
+RUN addgroup -S certguard && adduser -S certguard -G certguard
 
-COPY src ./src
-RUN mvn package -DskipTests -q
+# Copy pre-built JAR (built on host with: mvn clean package -DskipTests)
+COPY target/certguard-cloud-*.jar app.jar
 
-# ─────────────────────────────────────────────
-# Stage 2: Runtime
-# ─────────────────────────────────────────────
-FROM eclipse-temurin:21-jre-alpine AS runtime
+# Create keystore directory
+RUN mkdir -p /opt/certguard/keystores && \
+    chown -R certguard:certguard /opt/certguard
 
-# Install keytool (part of JDK, available in the JRE image via the JDK tools)
-# Generate a self-signed SSL certificate for HTTPS
-# In production: mount a real certificate via Docker secret or volume instead
-RUN mkdir -p /app/ssl && \
-    keytool -genkeypair \
-        -alias certmonitor \
-        -keyalg RSA \
-        -keysize 2048 \
-        -validity 365 \
-        -keystore /app/ssl/certmonitor.jks \
-        -storepass certmonitor_ssl \
-        -keypass certmonitor_ssl \
-        -dname "CN=certmonitor,OU=CertMonitor,O=CodeCatalyst,L=Unknown,ST=Unknown,C=US" \
-        -noprompt
+USER certguard
 
-# Non-root user for security
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+EXPOSE 8080
 
-# Give appuser ownership of ssl dir and app dir
-RUN chown -R appuser:appgroup /app
-USER appuser
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget -q -O- http://localhost:8080/actuator/health || exit 1
 
-WORKDIR /app
-
-COPY --from=builder /app/target/*.jar app.jar
-
-EXPOSE 443
-
-ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=prod", "app.jar"]
+ENTRYPOINT ["java", \
+    "-jar", \
+    "-Djava.security.egd=file:/dev/./urandom", \
+    "app.jar"]
