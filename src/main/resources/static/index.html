@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CertGuard Cloud</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --teal:        #0f6e56;
+      --teal-dark:   #085041;
+      --teal-mid:    #1d9e75;
+      --teal-lite:   #e1f5ee;
+      --teal-glow:   rgba(15,110,86,0.12);
+      --amber:       #d4860a;
+      --amber-lite:  #fff3dc;
+      --red:         #c0392b;
+      --red-lite:    #fdecea;
+      --blue:        #1a6fb5;
+      --blue-lite:   #e8f2fc;
+      --bg:          #f2f4f3;
+      --surface:     #ffffff;
+      --surface2:    #f7f9f8;
+      --border:      #dde5e2;
+      --border2:     #c8d5d1;
+      --text:        #0d1f1a;
+      --text2:       #3d5550;
+      --text3:       #6b8a84;
+      --mono:        'IBM Plex Mono', monospace;
+      --sans:        'IBM Plex Sans', sans-serif;
+      --r:           6px;
+      --r2:          10px;
+      --shadow:      0 1px 3px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.04);
+      --shadow2:     0 2px 8px rgba(0,0,0,0.10), 0 8px 24px rgba(0,0,0,0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── LAYOUT ── */
+    .app { display: flex; min-height: 100vh; }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: 220px;
+      min-height: 100vh;
+      background: var(--teal-dark);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      padding: 20px 20px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .logo-mark {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 30px; height: 30px;
+      background: var(--teal-mid);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .logo-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.02em;
+      line-height: 1.2;
+    }
+    .logo-sub {
+      font-size: 10px;
+      color: rgba(255,255,255,0.45);
+      font-family: var(--mono);
+      letter-spacing: 0.05em;
+      margin-top: 2px;
+    }
+
+    .nav { padding: 12px 0; flex: 1; }
+    .nav-section {
+      padding: 0 12px;
+      margin-bottom: 4px;
+    }
+    .nav-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.3);
+      text-transform: uppercase;
+      padding: 10px 8px 4px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: var(--r);
+      cursor: pointer;
+      color: rgba(255,255,255,0.6);
+      font-size: 13px;
+      font-weight: 400;
+      transition: all 0.15s;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+    .nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+    .nav-item.active { background: rgba(255,255,255,0.15); color: #fff; font-weight: 500; }
+    .nav-item .icon { width: 16px; text-align: center; font-size: 14px; flex-shrink: 0; }
+    .nav-badge {
+      margin-left: auto;
+      background: var(--red);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-family: var(--mono);
+    }
+    .nav-badge.amber { background: var(--amber); }
+
+    .sidebar-footer {
+      padding: 12px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .org-pill {
+      background: rgba(255,255,255,0.08);
+      border-radius: var(--r);
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .org-avatar {
+      width: 26px; height: 26px;
+      background: var(--teal-mid);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .org-name { font-size: 12px; color: rgba(255,255,255,0.7); font-weight: 500; }
+    .org-role { font-size: 10px; color: rgba(255,255,255,0.35); font-family: var(--mono); }
+
+    /* ── MAIN ── */
+    .main {
+      margin-left: 220px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── TOPBAR ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .page-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .topbar-actions { display: flex; align-items: center; gap: 8px; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--r);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      font-family: var(--sans);
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--teal); color: #fff; }
+    .btn-primary:hover { background: var(--teal-dark); }
+    .btn-secondary { background: var(--surface); color: var(--text2); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--border2); background: var(--surface2); }
+    .btn-danger { background: var(--red-lite); color: var(--red); border: 1px solid rgba(192,57,43,0.2); }
+    .btn-danger:hover { background: #fbd8d5; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+    /* ── CONTENT AREA ── */
+    .content {
+      padding: 24px;
+      flex: 1;
+    }
+
+    /* ── STAT CARDS ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r2);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: var(--shadow);
+      transition: box-shadow 0.2s;
+    }
+    .stat-card:hover { box-shadow: var(--shadow2); }
+    .stat-label { font-size: 11px; color: var(--text3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 28px; font-weight: 300; color: var(--text); font-family: var(--mono); line-height: 1; }
+    .stat-value.green  { color: var(--teal); }
+    .stat-value.amber  { color: var(--amber); }
+    .stat-value.red    { color: var(--red); }
+    .stat-value.blue   { color: var(--blue); }
+    .stat-bar { height: 3px; border-radius: 2px; background: var(--border); margin-top: 4px; }
+    .stat-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+    .stat-bar-fill.green  { background: var(--teal); }
+    .stat-bar-fill.amber  { background: var(--amber); }
+    .stat-bar-fill.red    { background: var(--red); }
+    .stat-bar-fill.blue   { background: var(--blue); }
+    .stat-bar-fill.gray   { background: var(--text3); }
+
+    /* ── SECTION HEADER ── */
+    .section-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: 0.01em;
+    }
+
+    /* ── TABLE ── */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r2);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text3);
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    td {
+      padding: 11px 14px;
+      font-size: 13px;
+      color: var(--text);
+      vertical-align: middle;
+    }
+    .mono { font-family: var(--mono); font-size: 12px; }
+
+    /* ── BADGES ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+    .badge-valid     { background: var(--teal-lite);  color: var(--teal-dark); }
+    .badge-expiring  { background: var(--amber-lite); color: #8a5200; }
+    .badge-expired   { background: var(--red-lite);   color: var(--red); }
+    .badge-unknown   { background: #f0f0f0;            color: var(--text3); }
+    .badge-active    { background: var(--teal-lite);  color: var(--teal-dark); }
+    .badge-revoked   { background: var(--red-lite);   color: var(--red); }
+    .badge-pending   { background: var(--amber-lite); color: #8a5200; }
+    .badge-domain    { background: var(--blue-lite);  color: #0f4a80; }
+    .badge-ip        { background: #f0eeff;            color: #4a2d8a; }
+    .badge-hostname  { background: #fff0e8;            color: #7a3a0a; }
+    .badge-private   { background: #f0eeff;            color: #4a2d8a; }
+
+    /* ── DOTS ── */
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .dot-green  { background: var(--teal-mid); }
+    .dot-amber  { background: var(--amber); animation: pulse-amber 2s infinite; }
+    .dot-red    { background: var(--red); animation: pulse-red 2s infinite; }
+    .dot-gray   { background: var(--text3); }
+    @keyframes pulse-amber { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    @keyframes pulse-red   { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── EMPTY STATE ── */
+    .empty {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--text3);
+    }
+    .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
+    .empty-title { font-size: 14px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+    .empty-sub { font-size: 13px; color: var(--text3); margin-bottom: 16px; }
+
+    /* ── MODAL ── */
+    .modal-bg {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border-radius: var(--r2);
+      padding: 24px;
+      width: 440px;
+      max-width: 95vw;
+      box-shadow: var(--shadow2);
+    }
+    .modal-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .modal-sub { font-size: 13px; color: var(--text3); margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 5px; }
+    .field input, .field select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      font-size: 13px;
+      font-family: var(--sans);
+      color: var(--text);
+      background: var(--surface);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .field input:focus, .field select:focus { border-color: var(--teal); }
+
+    /* ── TOAST ── */
+    .toast-area { position: fixed; bottom: 20px; right: 20px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
+    .toast {
+      background: var(--text);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: var(--r);
+      font-size: 13px;
+      box-shadow: var(--shadow2);
+      animation: slideIn 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toast.success { background: var(--teal-dark); }
+    .toast.error   { background: var(--red); }
+    @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+    /* ── ALERT BOX ── */
+    .alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: var(--r);
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+    .alert-error { background: var(--red-lite); color: var(--red); }
+    .alert-info  { background: var(--teal-lite); color: var(--teal-dark); }
+
+    /* ── LOADING ── */
+    .spin {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: inline-block;
+    }
+    .spin-dark {
+      border-color: rgba(15,110,86,0.2);
+      border-top-color: var(--teal);
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-row td {
+      text-align: center;
+      padding: 32px;
+      color: var(--text3);
+    }
+
+    /* ── TOKEN DISPLAY ── */
+    .token-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--teal-dark);
+      word-break: break-all;
+      margin: 8px 0 14px;
+    }
+
+    /* ── DAYS REMAINING ── */
+    .days {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .days.safe   { color: var(--teal); }
+    .days.warn   { color: var(--amber); }
+    .days.danger { color: var(--red); }
+
+    /* ── SCAN BTN ── */
+    .scan-btn {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text2);
+      font-family: var(--sans);
+      transition: all 0.15s;
+    }
+    .scan-btn:hover { border-color: var(--teal); color: var(--teal); }
+    .scan-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── VIEWS ── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── LAST SEEN ── */
+    .lastseen { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">
+        <div class="logo-icon">🛡</div>
+        <div>
+          <div class="logo-text">CertGuard</div>
+          <div class="logo-sub">CLOUD v1.0</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-section">
+        <div class="nav-label">Monitor</div>
+        <button class="nav-item active" onclick="showView('dashboard',this)">
+          <span class="icon">◈</span> Dashboard
+        </button>
+        <button class="nav-item" onclick="showView('targets',this)">
+          <span class="icon">⊕</span> Targets
+          <span class="nav-badge amber" id="sb-expiring" style="display:none"></span>
+        </button>
+        <button class="nav-item" onclick="showView('certificates',this)">
+          <span class="icon">⊞</span> Certificates
+        </button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Infrastructure</div>
+        <button class="nav-item" onclick="showView('agents',this)">
+          <span class="icon">⬡</span> Agents
+        </button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Account</div>
+        <button class="nav-item" onclick="showView('settings',this)">
+          <span class="icon">⚙</span> Settings
+        </button>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="org-pill">
+        <div class="org-avatar" id="org-avatar">?</div>
+        <div>
+          <div class="org-name" id="org-name-sidebar">Loading...</div>
+          <div class="org-role" id="org-role-sidebar">ADMIN</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <header class="topbar">
+      <div class="page-title" id="page-title">Dashboard</div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm" onclick="refreshAll()">↻ Refresh</button>
+        <button class="btn btn-primary btn-sm" id="topbar-action" onclick="openAddTarget()" style="display:none">+ Add Target</button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- ════ DASHBOARD VIEW ════ -->
+      <div class="view active" id="view-dashboard">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Targets</div>
+            <div class="stat-value blue" id="stat-total">—</div>
+            <div class="stat-bar"><div class="stat-bar-fill blue" id="bar-total" style="width:0%"></div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Valid</div>
+            <div class="stat-value green" id="stat-valid">—</div>
+            <div class="stat-bar"><div class="stat-bar-fill green" id="bar-valid" style="width:0%"></div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Expiring Soon</div>
+            <div class="stat-value amber" id="stat-expiring">—</div>
+            <div class="stat-bar"><div class="stat-bar-fill amber" id="bar-expiring" style="width:0%"></div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Expired</div>
+            <div class="stat-value red" id="stat-expired">—</div>
+            <div class="stat-bar"><div class="stat-bar-fill red" id="bar-expired" style="width:0%"></div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Unreachable</div>
+            <div class="stat-value" id="stat-unreachable" style="color:var(--text3)">—</div>
+            <div class="stat-bar"><div class="stat-bar-fill gray" id="bar-unreachable" style="width:0%"></div></div>
+          </div>
+        </div>
+
+        <div class="section-hdr">
+          <div class="section-title">Recent certificate activity</div>
+          <button class="btn btn-secondary btn-sm" onclick="showView('certificates', document.querySelector('.nav-item:nth-child(3)'))">View all</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>Common name</th>
+                <th>Status</th>
+                <th>Expires</th>
+                <th>Days left</th>
+                <th>Scanned</th>
+              </tr>
+            </thead>
+            <tbody id="dash-certs-body">
+              <tr class="loading-row"><td colspan="6"><span class="spin spin-dark"></span> Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ════ TARGETS VIEW ════ -->
+      <div class="view" id="view-targets">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>Port</th>
+                <th>Type</th>
+                <th>Visibility</th>
+                <th>Status</th>
+                <th>Last scanned</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="targets-body">
+              <tr class="loading-row"><td colspan="7"><span class="spin spin-dark"></span> Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ════ CERTIFICATES VIEW ════ -->
+      <div class="view" id="view-certificates">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>Common name</th>
+                <th>Issuer</th>
+                <th>Status</th>
+                <th>Expires</th>
+                <th>Days left</th>
+                <th>Scanned</th>
+              </tr>
+            </thead>
+            <tbody id="certs-body">
+              <tr class="loading-row"><td colspan="7"><span class="spin spin-dark"></span> Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ════ AGENTS VIEW ════ -->
+      <div class="view" id="view-agents">
+        <div class="alert alert-info" style="margin-bottom:20px">
+          ℹ  Agents scan hosts inside private networks that are unreachable from the internet. 
+          Communication uses TLS 1.3 + HMAC-SHA256 payload signing.
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Targets</th>
+                <th>Allowed CIDRs</th>
+                <th>Last seen</th>
+                <th>Registered</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="agents-body">
+              <tr class="loading-row"><td colspan="7"><span class="spin spin-dark"></span> Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="section-hdr" style="margin-top:24px">
+          <div class="section-title">Add a new agent</div>
+        </div>
+        <div class="table-wrap" style="padding:20px">
+          <div class="field" style="max-width:320px">
+            <label>Agent name</label>
+            <input id="new-agent-name" placeholder="e.g. office-network-agent">
+          </div>
+          <button class="btn btn-primary" onclick="generateToken()">Generate registration token</button>
+          <div id="token-result" style="margin-top:14px;display:none">
+            <div style="font-size:12px;font-weight:500;color:var(--text2);margin-bottom:4px">
+              Registration token — copy now, shown once, expires in 1 hour:
+            </div>
+            <div class="token-box" id="token-display"></div>
+            <button class="btn btn-secondary btn-sm" onclick="copyToken()">Copy token</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════ SETTINGS VIEW ════ -->
+      <div class="view" id="view-settings">
+        <div class="table-wrap" style="padding:24px;max-width:560px">
+          <div class="section-title" style="margin-bottom:16px">Organisation</div>
+          <div class="field">
+            <label>Organisation name</label>
+            <input id="settings-org-name" placeholder="Loading...">
+          </div>
+          <div class="field">
+            <label>Org ID</label>
+            <input id="settings-org-id" readonly style="background:var(--surface2);font-family:var(--mono);font-size:12px">
+          </div>
+          <button class="btn btn-primary" onclick="updateOrgName()">Save changes</button>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+</div><!-- /app -->
+
+<!-- ════ ADD TARGET MODAL ════ -->
+<div class="modal-bg" id="modal-add-target">
+  <div class="modal">
+    <div class="modal-title">Add target</div>
+    <div class="modal-sub">Enter a hostname, IP address, or domain to monitor.</div>
+    <div id="add-target-error" class="alert alert-error" style="display:none"></div>
+    <div class="field">
+      <label>Host *</label>
+      <input id="at-host" placeholder="google.com or 192.168.1.10 or my-server">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field">
+        <label>Port</label>
+        <input id="at-port" type="number" value="443" min="1" max="65535">
+      </div>
+      <div class="field">
+        <label>Visibility</label>
+        <select id="at-private" onchange="toggleAgentSelect()">
+          <option value="false">Public</option>
+          <option value="true">Private (agent)</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" id="at-agent-field" style="display:none">
+      <label>Assign agent *</label>
+      <select id="at-agent"></select>
+    </div>
+    <div class="field">
+      <label>Description</label>
+      <input id="at-desc" placeholder="Optional label">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-target')">Cancel</button>
+      <button class="btn btn-primary" id="at-submit" onclick="submitAddTarget()">Add target</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ TOAST AREA ════ -->
+<div class="toast-area" id="toast-area"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────
+let TOKEN = '', ORG_ID = '', ORG_NAME = '', ROLE = '';
+let agents = [], targets = [], certs = [], dash = null;
+let currentView = 'dashboard';
+let generatedToken = '';
+
+// ── API ──────────────────────────────────────────────────────
+async function api(method, path, body, token) {
+  const opts = { method, headers: {} };
+  if (token || TOKEN) opts.headers['Authorization'] = 'Bearer ' + (token || TOKEN);
+  if (body)  { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch(path, opts);
+  let data;
+  try { data = await r.json(); } catch(e) { data = {}; }
+  return { ok: r.ok, status: r.status, data };
+}
+
+// ── Bootstrap ────────────────────────────────────────────────
+async function init() {
+  // Try stored token first
+  const stored = sessionStorage.getItem('cg_token');
+  if (stored) {
+    TOKEN  = stored;
+    ORG_ID = sessionStorage.getItem('cg_org') || '';
+  }
+
+  // Always get fresh token in dev mode
+  const r = await api('POST', '/api/v1/auth/dev-token?email=admin@certguard.local');
+  if (r.ok && r.data.token) {
+    TOKEN   = r.data.token;
+    ORG_ID  = r.data.orgId;
+    ROLE    = r.data.role || 'ADMIN';
+    sessionStorage.setItem('cg_token', TOKEN);
+    sessionStorage.setItem('cg_org', ORG_ID);
+  }
+
+  if (!TOKEN) { showToast('Auth failed — is APP_DEV_MODE=true?', 'error'); return; }
+
+  await loadOrg();
+  await refreshAll();
+}
+
+async function loadOrg() {
+  const r = await api('GET', '/api/v1/org');
+  if (r.ok) {
+    ORG_NAME = r.data.name || 'My Org';
+    document.getElementById('org-name-sidebar').textContent = ORG_NAME;
+    document.getElementById('org-avatar').textContent = ORG_NAME.charAt(0).toUpperCase();
+    document.getElementById('org-role-sidebar').textContent = ROLE;
+    document.getElementById('settings-org-name').value = ORG_NAME;
+    document.getElementById('settings-org-id').value = ORG_ID;
+  }
+}
+
+async function refreshAll() {
+  await Promise.all([loadDashboard(), loadTargets(), loadCerts(), loadAgents()]);
+}
+
+// ── Dashboard ────────────────────────────────────────────────
+async function loadDashboard() {
+  const r = await api('GET', '/api/v1/dashboard');
+  if (!r.ok) return;
+  dash = r.data;
+  const total = dash.totalTargets || 0;
+  const valid = dash.valid || 0;
+  const expiring = dash.expiring || 0;
+  const expired = dash.expired || 0;
+  const unreachable = dash.unreachable || 0;
+
+  document.getElementById('stat-total').textContent      = total;
+  document.getElementById('stat-valid').textContent      = valid;
+  document.getElementById('stat-expiring').textContent   = expiring;
+  document.getElementById('stat-expired').textContent    = expired;
+  document.getElementById('stat-unreachable').textContent = unreachable;
+
+  // Progress bars (% of total or 100 if 0)
+  const denom = total || 1;
+  document.getElementById('bar-total').style.width      = '100%';
+  document.getElementById('bar-valid').style.width      = (valid/denom*100) + '%';
+  document.getElementById('bar-expiring').style.width   = (expiring/denom*100) + '%';
+  document.getElementById('bar-expired').style.width    = (expired/denom*100) + '%';
+  document.getElementById('bar-unreachable').style.width= (unreachable/denom*100) + '%';
+
+  // Sidebar badge
+  const badge = document.getElementById('sb-expiring');
+  if (expiring > 0 || expired > 0) {
+    badge.style.display = '';
+    badge.textContent = expiring + expired;
+    badge.className = 'nav-badge' + (expired > 0 ? '' : ' amber');
+  } else {
+    badge.style.display = 'none';
+  }
+
+  renderDashCerts();
+}
+
+function renderDashCerts() {
+  const tbody = document.getElementById('dash-certs-body');
+  const list = certs.slice(0, 10);
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="6">
+      <div class="empty">
+        <div class="empty-icon">⊞</div>
+        <div class="empty-title">No certificates yet</div>
+        <div class="empty-sub">Add a target and trigger a scan to see results here.</div>
+      </div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(c => `
+    <tr>
+      <td class="mono">${esc(c.host)}:${c.port}</td>
+      <td>${esc(c.commonName || '—')}</td>
+      <td>${statusBadge(c.status)}</td>
+      <td class="mono">${fmtDate(c.expiryDate)}</td>
+      <td>${daysLeft(c.daysRemaining)}</td>
+      <td class="lastseen">${relTime(c.scannedAt)}</td>
+    </tr>`).join('');
+}
+
+// ── Targets ──────────────────────────────────────────────────
+async function loadTargets() {
+  const r = await api('GET', '/api/v1/targets?size=100');
+  if (!r.ok) return;
+  targets = r.data.content || [];
+  renderTargets();
+}
+
+function renderTargets() {
+  const tbody = document.getElementById('targets-body');
+  if (!targets.length) {
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="empty">
+        <div class="empty-icon">⊕</div>
+        <div class="empty-title">No targets yet</div>
+        <div class="empty-sub">Add your first target to start monitoring certificates.</div>
+        <button class="btn btn-primary btn-sm" style="margin:0 auto" onclick="openAddTarget()">+ Add target</button>
+      </div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = targets.map(t => {
+    const cert = t.latestCertificate;
+    const certStatus = cert ? statusBadge(cert.status) : `<span class="badge badge-unknown">NO SCAN</span>`;
+    const lastScan = t.lastScannedAt ? relTime(t.lastScannedAt) : '—';
+    return `
+    <tr>
+      <td>
+        <div style="font-weight:500">${esc(t.host)}</div>
+        ${t.description ? `<div style="font-size:11px;color:var(--text3);margin-top:2px">${esc(t.description)}</div>` : ''}
+      </td>
+      <td class="mono">${t.port}</td>
+      <td>${typeBadge(t.hostType)}</td>
+      <td>${t.isPrivate
+        ? `<span class="badge badge-private">● PRIVATE</span>`
+        : `<span class="badge badge-domain">◯ PUBLIC</span>`}</td>
+      <td>${certStatus}</td>
+      <td class="lastseen">${lastScan}</td>
+      <td>
+        <button class="scan-btn" id="scan-${t.id}" onclick="triggerScan('${t.id}','${esc(t.host)}')">Scan</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function triggerScan(id, host) {
+  const btn = document.getElementById('scan-' + id);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const r = await api('POST', `/api/v1/targets/${id}/scan`);
+  if (r.ok) {
+    showToast(`Scan triggered for ${host}`, 'success');
+    setTimeout(() => { loadTargets(); loadCerts(); loadDashboard(); }, 5000);
+  } else {
+    showToast(`Scan failed: ${r.data.detail || r.status}`, 'error');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Scan'; }
+}
+
+// ── Certificates ─────────────────────────────────────────────
+async function loadCerts() {
+  const r = await api('GET', '/api/v1/certificates?size=100');
+  if (!r.ok) return;
+  certs = r.data.content || [];
+  // Sort: expired first, then expiring, then by days remaining
+  certs.sort((a, b) => {
+    const order = { EXPIRED: 0, EXPIRING: 1, UNREACHABLE: 2, VALID: 3, UNKNOWN: 4 };
+    const diff = (order[a.status] || 4) - (order[b.status] || 4);
+    return diff !== 0 ? diff : (a.daysRemaining || 9999) - (b.daysRemaining || 9999);
+  });
+  renderCerts();
+  renderDashCerts();
+}
+
+function renderCerts() {
+  const tbody = document.getElementById('certs-body');
+  if (!certs.length) {
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="empty">
+        <div class="empty-icon">⊞</div>
+        <div class="empty-title">No certificates scanned yet</div>
+        <div class="empty-sub">Trigger a scan on a target to see its certificate here.</div>
+      </div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = certs.map(c => `
+    <tr>
+      <td class="mono">${esc(c.host)}:${c.port}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.commonName || '—')}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--text3)">${esc(c.issuer || '—')}</td>
+      <td>${statusBadge(c.status)}</td>
+      <td class="mono">${fmtDate(c.expiryDate)}</td>
+      <td>${daysLeft(c.daysRemaining)}</td>
+      <td class="lastseen">${relTime(c.scannedAt)}</td>
+    </tr>`).join('');
+}
+
+// ── Agents ───────────────────────────────────────────────────
+async function loadAgents() {
+  const r = await api('GET', '/api/v1/agent/list');
+  if (!r.ok) return;
+  agents = Array.isArray(r.data) ? r.data : [];
+  renderAgents();
+}
+
+function renderAgents() {
+  const tbody = document.getElementById('agents-body');
+  if (!agents.length) {
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="empty">
+        <div class="empty-icon">⬡</div>
+        <div class="empty-title">No agents registered</div>
+        <div class="empty-sub">Generate a registration token below and deploy an agent on your private network.</div>
+      </div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = agents.map(a => {
+    const statusClass = { ACTIVE:'badge-active', REVOKED:'badge-revoked', PENDING:'badge-pending', EXPIRED:'badge-expired' }[a.status] || 'badge-unknown';
+    const dot = { ACTIVE:'dot-green', REVOKED:'dot-red', PENDING:'dot-amber' }[a.status] || 'dot-gray';
+    return `
+    <tr>
+      <td style="font-weight:500">${esc(a.name)}</td>
+      <td><span class="badge ${statusClass}"><span class="dot ${dot}"></span>${a.status}</span></td>
+      <td class="mono">${a.currentTargetCount || 0} / ${a.maxTargets || 50}</td>
+      <td style="font-size:11px;color:var(--text3)">${(a.allowedCidrs||[]).join(', ') || '—'}</td>
+      <td class="lastseen">${a.lastSeenAt ? relTime(a.lastSeenAt) : 'Never'}</td>
+      <td class="lastseen">${a.registeredAt ? fmtDate(a.registeredAt) : '—'}</td>
+      <td>
+        ${a.status === 'ACTIVE'
+          ? `<button class="scan-btn" style="color:var(--red);border-color:rgba(192,57,43,0.3)"
+               onclick="revokeAgent('${a.id}','${esc(a.name)}')">Revoke</button>`
+          : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function revokeAgent(id, name) {
+  if (!confirm(`Revoke agent "${name}"? It will no longer be able to authenticate.`)) return;
+  const r = await api('POST', `/api/v1/agent/${id}/revoke`);
+  if (r.ok) { showToast(`Agent "${name}" revoked`, 'success'); loadAgents(); }
+  else showToast(`Revoke failed: ${r.data.detail || r.status}`, 'error');
+}
+
+async function generateToken() {
+  const name = document.getElementById('new-agent-name').value.trim();
+  if (!name) { showToast('Enter an agent name first', 'error'); return; }
+  const r = await api('POST', `/api/v1/agent/tokens?agentName=${encodeURIComponent(name)}`);
+  if (r.ok && r.data.token) {
+    generatedToken = r.data.token;
+    document.getElementById('token-display').textContent = generatedToken;
+    document.getElementById('token-result').style.display = '';
+    showToast('Token generated — copy it now!', 'success');
+  } else {
+    showToast(`Failed: ${r.data.detail || r.status}`, 'error');
+  }
+}
+
+function copyToken() {
+  if (generatedToken) {
+    navigator.clipboard?.writeText(generatedToken);
+    showToast('Token copied to clipboard', 'success');
+  }
+}
+
+// ── Add target modal ─────────────────────────────────────────
+function openAddTarget() {
+  document.getElementById('at-host').value = '';
+  document.getElementById('at-port').value = '443';
+  document.getElementById('at-private').value = 'false';
+  document.getElementById('at-desc').value = '';
+  document.getElementById('add-target-error').style.display = 'none';
+  toggleAgentSelect();
+
+  // Populate agent select
+  const sel = document.getElementById('at-agent');
+  sel.innerHTML = agents.filter(a => a.status === 'ACTIVE').map(a =>
+    `<option value="${a.id}">${esc(a.name)} (${a.currentTargetCount}/${a.maxTargets})</option>`
+  ).join('') || '<option value="">No active agents</option>';
+
+  document.getElementById('modal-add-target').classList.add('open');
+  setTimeout(() => document.getElementById('at-host').focus(), 50);
+}
+
+function toggleAgentSelect() {
+  const isPrivate = document.getElementById('at-private').value === 'true';
+  document.getElementById('at-agent-field').style.display = isPrivate ? '' : 'none';
+}
+
+async function submitAddTarget() {
+  const host = document.getElementById('at-host').value.trim().toLowerCase();
+  const port = parseInt(document.getElementById('at-port').value) || 443;
+  const isPrivate = document.getElementById('at-private').value === 'true';
+  const agentId = document.getElementById('at-agent').value;
+  const description = document.getElementById('at-desc').value.trim();
+
+  if (!host) {
+    document.getElementById('add-target-error').style.display = '';
+    document.getElementById('add-target-error').textContent = 'Host is required';
+    return;
+  }
+
+  const btn = document.getElementById('at-submit');
+  btn.disabled = true; btn.textContent = 'Adding...';
+
+  const body = { host, port, isPrivate, description };
+  if (isPrivate && agentId) body.agentId = agentId;
+
+  const r = await api('POST', '/api/v1/targets', body);
+  btn.disabled = false; btn.textContent = 'Add target';
+
+  if (r.ok) {
+    closeModal('modal-add-target');
+    showToast(`Target added: ${host}:${port}`, 'success');
+    await loadTargets();
+    await loadDashboard();
+  } else {
+    document.getElementById('add-target-error').style.display = '';
+    document.getElementById('add-target-error').textContent = r.data.detail || `Error ${r.status}`;
+  }
+}
+
+// ── Settings ─────────────────────────────────────────────────
+async function updateOrgName() {
+  const name = document.getElementById('settings-org-name').value.trim();
+  if (!name) return;
+  const r = await api('PUT', `/api/v1/org/name?name=${encodeURIComponent(name)}`);
+  if (r.ok) {
+    ORG_NAME = name;
+    document.getElementById('org-name-sidebar').textContent = name;
+    document.getElementById('org-avatar').textContent = name.charAt(0).toUpperCase();
+    showToast('Organisation name updated', 'success');
+  } else {
+    showToast(`Update failed: ${r.data.detail || r.status}`, 'error');
+  }
+}
+
+// ── Navigation ───────────────────────────────────────────────
+function showView(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  currentView = name;
+
+  const titles = { dashboard:'Dashboard', targets:'Targets', certificates:'Certificates',
+                   agents:'Agents', settings:'Settings' };
+  document.getElementById('page-title').textContent = titles[name] || name;
+
+  const action = document.getElementById('topbar-action');
+  action.style.display = name === 'targets' ? '' : 'none';
+  action.textContent = name === 'targets' ? '+ Add Target' : '';
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+function statusBadge(s) {
+  const map = {
+    VALID:       ['badge-valid',    '● VALID'],
+    EXPIRING:    ['badge-expiring', '⚠ EXPIRING'],
+    EXPIRED:     ['badge-expired',  '✕ EXPIRED'],
+    UNREACHABLE: ['badge-unknown',  '? UNREACHABLE'],
+    UNKNOWN:     ['badge-unknown',  '? UNKNOWN'],
+  };
+  const [cls, label] = map[s] || ['badge-unknown', s || 'UNKNOWN'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function typeBadge(t) {
+  const map = { DOMAIN:'badge-domain', IP:'badge-ip', HOSTNAME:'badge-hostname' };
+  return `<span class="badge ${map[t]||'badge-unknown'}">${t||'?'}</span>`;
+}
+
+function daysLeft(d) {
+  if (d === undefined || d === null) return '—';
+  const cls = d < 0 ? 'danger' : d <= 7 ? 'danger' : d <= 30 ? 'warn' : 'safe';
+  const label = d < 0 ? `${Math.abs(d)}d ago` : `${d}d`;
+  return `<span class="days ${cls}">${label}</span>`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function relTime(iso) {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h/24)}d ago`;
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+function showToast(msg, type = '') {
+  const area = document.getElementById('toast-area');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  area.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// Close modals on background click
+document.querySelectorAll('.modal-bg').forEach(bg => {
+  bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); });
+});
+
+// Enter key in add target form
+document.getElementById('at-host')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitAddTarget();
+});
+
+// Boot
+init();
+</script>
+</body>
+</html>
