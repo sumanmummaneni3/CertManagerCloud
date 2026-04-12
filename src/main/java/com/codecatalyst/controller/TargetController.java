@@ -2,7 +2,6 @@ package com.codecatalyst.controller;
 
 import com.codecatalyst.dto.request.CreateTargetRequest;
 import com.codecatalyst.dto.request.UpdateTargetRequest;
-import com.codecatalyst.dto.response.ScanJobResponse;
 import com.codecatalyst.dto.response.TargetResponse;
 import com.codecatalyst.security.TenantContext;
 import com.codecatalyst.service.AgentService;
@@ -57,12 +56,23 @@ public class TargetController {
         return ResponseEntity.ok(Map.of("message", result));
     }
 
-    /**
-     * Poll for the latest scan job status for a target.
-     * UI uses this to show PENDING → CLAIMED → COMPLETED transition after triggering a scan.
-     */
     @GetMapping("/{id}/scan-status")
     public ResponseEntity<?> scanStatus(@PathVariable UUID id) {
         return ResponseEntity.ok(targetService.getLatestScanStatus(TenantContext.getOrgId(), id));
+    }
+
+    // ── Notification channels ──────────────────────────────────────────────
+
+    @GetMapping("/{id}/notifications")
+    public ResponseEntity<Map<String, Object>> getNotifications(@PathVariable UUID id) {
+        TargetResponse t = targetService.getTarget(TenantContext.getOrgId(), id);
+        return ResponseEntity.ok(t.getNotificationChannels() != null ? t.getNotificationChannels() : Map.of());
+    }
+
+    @PutMapping("/{id}/notifications")
+    public ResponseEntity<TargetResponse> updateNotifications(
+            @PathVariable UUID id,
+            @RequestBody Map<String, Object> channels) {
+        return ResponseEntity.ok(targetService.updateNotificationChannels(TenantContext.getOrgId(), id, channels));
     }
 }

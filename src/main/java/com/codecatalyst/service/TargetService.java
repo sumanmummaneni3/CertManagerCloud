@@ -18,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
 import java.net.InetAddress;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -35,6 +36,7 @@ public class TargetService {
     private final CertificateRecordRepository certRepository;
     private final AgentRepository agentRepository;
     private final AgentScanJobRepository scanJobRepository;
+    private final LocationRepository locationRepository;
 
     @Transactional(readOnly = true)
     public Page<TargetResponse> listTargets(UUID orgId, Pageable pageable) {
@@ -78,10 +80,19 @@ public class TargetService {
             }
         }
 
+        // Resolve optional location
+        com.codecatalyst.entity.Location location = null;
+        if (request.getLocationId() != null) {
+            location = locationRepository.findByIdAndOrganizationId(request.getLocationId(), orgId)
+                    .orElseThrow(() -> new com.codecatalyst.exception.ResourceNotFoundException("Location not found: " + request.getLocationId()));
+        }
+
         Target target = Target.builder()
                 .organization(org).host(host).port(request.getPort())
                 .hostType(hostType).isPrivate(isPrivate)
                 .description(request.getDescription()).agent(agent).enabled(true)
+                .location(location)
+                .notificationChannels(request.getNotificationChannels() != null ? request.getNotificationChannels() : new java.util.HashMap<>())
                 .build();
         target = targetRepository.save(target);
 
@@ -220,6 +231,18 @@ public class TargetService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public TargetResponse getTarget(UUID orgId, UUID targetId) {
+        return toResponse(findTargetForOrg(orgId, targetId));
+    }
+
+    @Transactional
+    public TargetResponse updateNotificationChannels(UUID orgId, UUID targetId, Map<String, Object> channels) {
+        Target target = findTargetForOrg(orgId, targetId);
+        target.setNotificationChannels(channels);
+        return toResponse(targetRepository.save(target));
+    }
+
     private Target findTargetForOrg(UUID orgId, UUID targetId) {
         return targetRepository.findByIdAndOrganizationId(targetId, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Target not found: " + targetId));
@@ -229,8 +252,8 @@ public class TargetService {
         Subscription sub = subscriptionRepository.findByOrganizationId(orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("No subscription found"));
         long current = targetRepository.countByOrganizationId(orgId);
-        if (current >= sub.getMaxTargets())
-            throw new QuotaExceededException("Target limit of " + sub.getMaxTargets() + " reached.");
+        if (current >= sub.getMaxCertificateQuota())
+            throw new QuotaExceededException("Certificate quota of " + sub.getMaxCertificateQuota() + " reached. Contact your platform administrator to increase the limit.");
     }
 
     private TargetResponse toResponse(Target target) {
@@ -245,6 +268,9 @@ public class TargetService {
                 .lastScannedAt(target.getLastScannedAt()).createdAt(target.getCreatedAt())
                 .agentId(target.getAgent() != null ? target.getAgent().getId() : null)
                 .agentName(target.getAgent() != null ? target.getAgent().getName() : null)
+                .locationId(target.getLocation() != null ? target.getLocation().getId() : null)
+                .locationName(target.getLocation() != null ? target.getLocation().getName() : null)
+                .notificationChannels(target.getNotificationChannels())
                 .latestCertificate(certSummary)
                 .build();
     }

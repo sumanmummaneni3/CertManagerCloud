@@ -2,8 +2,11 @@ package com.codecatalyst.dto.response;
 import com.codecatalyst.enums.HostType;
 import lombok.Builder;
 import lombok.Data;
+
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
+
 @Data @Builder
 public class TargetResponse {
     private UUID id;
@@ -15,7 +18,10 @@ public class TargetResponse {
     private boolean enabled;
     private UUID agentId;
     private String agentName;
+    private UUID locationId;
+    private String locationName;
     private Instant lastScannedAt;
     private Instant createdAt;
     private CertificateSummary latestCertificate;
+    private Map<String, Object> notificationChannels;
 }

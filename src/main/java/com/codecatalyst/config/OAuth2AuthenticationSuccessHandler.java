@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -35,6 +36,10 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
     @Value("${app.base-url:http://localhost:3000}")
     private String baseUrl;
 
+    /** Comma-separated list of Google emails that receive PLATFORM_ADMIN role. */
+    @Value("${app.platform-admin.emails:}")
+    private List<String> platformAdminEmails;
+
     @Override
     @Transactional
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -44,19 +49,44 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
         String name  = oidcUser.getFullName();
         String sub   = oidcUser.getSubject();
 
+        boolean isPlatformAdmin = platformAdminEmails.contains(email);
+
         User user = userRepository.findByEmail(email).orElseGet(() -> {
+            if (isPlatformAdmin) {
+                // Platform admins do NOT belong to any MSP org; create a sentinel org.
+                Organization adminOrg = Organization.builder()
+                        .name("__platform_admin__").slug("__platform_admin__").build();
+                orgRepository.save(adminOrg);
+                subscriptionRepository.save(Subscription.builder()
+                        .organization(adminOrg).maxCertificateQuota(0)
+                        .status(SubscriptionStatus.ACTIVE).build());
+                log.info("Bootstrap: created PLATFORM_ADMIN user for {}", email);
+                return userRepository.save(User.builder()
+                        .organization(adminOrg).email(email).name(name)
+                        .role(UserRole.PLATFORM_ADMIN).googleSub(sub).build());
+            }
+
+            // Regular MSP org user — auto-provision org + subscription.
             Organization org = Organization.builder()
                     .name(email.split("@")[0] + "'s Org").build();
             orgRepository.save(org);
             subscriptionRepository.save(Subscription.builder()
-                    .organization(org).maxTargets(10).status(SubscriptionStatus.TRIAL).build());
+                    .organization(org).maxCertificateQuota(10)
+                    .status(SubscriptionStatus.TRIAL).build());
             return userRepository.save(User.builder()
                     .organization(org).email(email).name(name)
                     .role(UserRole.ADMIN).googleSub(sub).build());
         });
 
+        // Keep role in sync with the allowlist (allows promoting/demoting without DB edits).
+        UserRole expectedRole = isPlatformAdmin ? UserRole.PLATFORM_ADMIN : user.getRole();
+        if (user.getRole() != expectedRole) {
+            user.setRole(expectedRole);
+            userRepository.save(user);
+            log.info("Role updated to {} for {}", expectedRole, email);
+        }
+
         String token = jwtTokenProvider.generateToken(user);
-        getRedirectStrategy().sendRedirect(request, response,
-                baseUrl + "/?token=" + token);
+        getRedirectStrategy().sendRedirect(request, response, baseUrl + "/?token=" + token);
     }
 }

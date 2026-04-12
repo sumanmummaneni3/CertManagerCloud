@@ -1,5 +1,6 @@
 package com.codecatalyst.security;
 
+import com.codecatalyst.security.TenantContext;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -44,6 +45,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         new CertGuardUserPrincipal(userId, orgId, email, role);
 
                 TenantContext.setOrgId(orgId);
+                TenantContext.setUserId(userId);
 
                 var auth = new UsernamePasswordAuthenticationToken(
                         principal, null, principal.getAuthorities());

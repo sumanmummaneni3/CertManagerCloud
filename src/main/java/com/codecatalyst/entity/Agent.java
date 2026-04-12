@@ -1,14 +1,17 @@
 package com.codecatalyst.entity;
 
+import com.codecatalyst.config.JsonListConverter;
 import com.codecatalyst.enums.AgentStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "agents")

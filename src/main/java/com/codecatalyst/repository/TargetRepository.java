@@ -15,4 +15,5 @@ public interface TargetRepository extends JpaRepository<Target, UUID> {
     Optional<Target> findByIdAndOrganizationId(UUID id, UUID orgId);
     boolean existsByOrganizationIdAndHostAndPort(UUID orgId, String host, int port);
     long countByOrganizationId(UUID orgId);
+    long countByLocationId(UUID locationId);
 }

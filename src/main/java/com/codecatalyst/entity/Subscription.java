@@ -14,9 +14,13 @@ public class Subscription extends BaseEntity {
     @JoinColumn(name = "org_id", nullable = false, unique = true)
     private Organization organization;
 
-    @Column(name = "max_targets", nullable = false)
+    /**
+     * Maximum number of certificates this org is allowed to have scanned.
+     * Default 10 (set on MSP registration). Only PLATFORM_ADMIN may change this.
+     */
+    @Column(name = "max_certificate_quota", nullable = false)
     @Builder.Default
-    private Integer maxTargets = 10;
+    private Integer maxCertificateQuota = 10;
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)

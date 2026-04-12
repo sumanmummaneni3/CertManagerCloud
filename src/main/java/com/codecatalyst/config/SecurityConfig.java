@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -21,6 +22,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -31,11 +33,10 @@ public class SecurityConfig {
     @Value("${app.dev-mode:true}")
     private boolean devMode;
 
-    public SecurityConfig(
-            JwtAuthenticationFilter jwtAuthenticationFilter,
-            OAuth2UserService oAuth2UserService,
-            OAuth2AuthenticationSuccessHandler oAuth2SuccessHandler,
-            ApplicationContext applicationContext) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                          OAuth2UserService oAuth2UserService,
+                          OAuth2AuthenticationSuccessHandler oAuth2SuccessHandler,
+                          ApplicationContext applicationContext) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.oAuth2UserService       = oAuth2UserService;
         this.oAuth2SuccessHandler    = oAuth2SuccessHandler;
@@ -53,15 +54,21 @@ public class SecurityConfig {
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .dispatcherTypeMatchers(DispatcherType.FORWARD, DispatcherType.INCLUDE).permitAll()
+                // Agent
                 .requestMatchers("/api/v1/agent/ca-cert").permitAll()
                 .requestMatchers("/api/v1/agent/register").permitAll()
                 .requestMatchers("/agent/download").permitAll()
                 .requestMatchers("/agent/version").permitAll()
-                .requestMatchers("/api/v1/agent/**").authenticated()
-                .requestMatchers("/api/v1/dashboard").authenticated()
-                .requestMatchers("/api/v1/targets/**").authenticated()
-                .requestMatchers("/api/v1/certificates/**").authenticated()
-                .requestMatchers("/api/v1/org/**").authenticated()
+                // Auth — always public
+                .requestMatchers("/api/v1/auth/config").permitAll()
+                .requestMatchers("/api/v1/auth/logout").permitAll()
+                .requestMatchers("/api/v1/auth/dev-token").permitAll()
+                .requestMatchers("/api/v1/auth/invite/**").permitAll()
+                // OAuth2
+                .requestMatchers("/oauth2/**").permitAll()
+                .requestMatchers("/login/oauth2/**").permitAll()
+                // Protected API — role checks via @PreAuthorize
+                .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().permitAll()
             )
             .addFilterBefore(agentAuthFilter, UsernamePasswordAuthenticationFilter.class)
@@ -70,8 +77,7 @@ public class SecurityConfig {
         if (!devMode) {
             http.oauth2Login(oauth2 -> oauth2
                 .userInfoEndpoint(ui -> ui.oidcUserService(oAuth2UserService))
-                .successHandler(oAuth2SuccessHandler)
-            );
+                .successHandler(oAuth2SuccessHandler));
         } else {
             http.oauth2Login(oauth2 -> oauth2.disable());
         }
